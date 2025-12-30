@@ -151,6 +151,21 @@ Files that indicate a Python project root:
         '("pyproject.toml" "requirements.txt"))  ; default
 ```
 
+### `eglot-python-preset-workspace-config-plist`
+
+Additional workspace configuration to send to the LSP server. This plist is
+merged into the `workspace/configuration` response. Currently only used with
+basedpyright.
+
+Example to disable auto-import completions and set type checking mode:
+
+```elisp
+(setopt eglot-python-preset-workspace-config-plist
+        '(:basedpyright.analysis
+          (:autoImportCompletions :json-false
+           :typeCheckingMode "basic")))
+```
+
 ## Notes
 
 - The package uses `uv` for all Python environment management. Ensure `uv` is

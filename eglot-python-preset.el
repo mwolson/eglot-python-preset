@@ -79,6 +79,22 @@
   :type '(repeat string)
   :group 'eglot-python-preset)
 
+;;;###autoload
+(defcustom eglot-python-preset-workspace-config-plist nil
+  "Additional workspace configuration plist to send to the LSP server.
+
+This plist is merged into the workspace/configuration response.
+Currently only used with basedpyright.
+
+Example to disable auto-import completions and set type checking mode:
+
+  (setopt eglot-python-preset-workspace-config-plist
+          \\='(:basedpyright.analysis
+            (:autoImportCompletions :json-false
+             :typeCheckingMode \"basic\")))"
+  :type '(plist)
+  :group 'eglot-python-preset)
+
 (defun eglot-python-preset-has-metadata-p ()
   "Return non-nil if current buffer contains PEP-723 script metadata."
   (let ((case-fold-search nil))
@@ -147,18 +163,43 @@ Used by basedpyright to look up script configurations for PEP-723.")
 (defvar eglot-python-preset--original-workspace-configuration nil
   "Original value of `eglot-workspace-configuration' before we modified it.")
 
+(defun eglot-python-preset--merge-plists (base override)
+  "Recursively merge OVERRIDE plist into BASE plist.
+
+For keys present in both, OVERRIDE values take precedence.
+If both values are plists, merge them recursively."
+  (let ((result (copy-sequence base)))
+    (cl-loop for (key val) on override by #'cddr
+             do (let ((base-val (plist-get result key)))
+                  (setq result
+                        (plist-put result key
+                                   (if (and (listp base-val)
+                                            (listp val)
+                                            (keywordp (car-safe base-val))
+                                            (keywordp (car-safe val)))
+                                       (eglot-python-preset--merge-plists base-val val)
+                                     val)))))
+    result))
+
 (defun eglot-python-preset--workspace-config-fn (server)
   "Return workspace configuration for the current `default-directory'.
 
 SERVER is the Eglot server instance, passed to fallback configuration.
 Looks up configuration from `eglot-python-preset--workspace-configs'.
+Merges `eglot-python-preset-workspace-config-plist' into the result.
 Falls back to original `eglot-workspace-configuration' for non-PEP-723 dirs."
-  (let ((dir (file-name-as-directory (expand-file-name default-directory))))
-    (or (gethash dir eglot-python-preset--workspace-configs)
-        (when eglot-python-preset--original-workspace-configuration
-          (if (functionp eglot-python-preset--original-workspace-configuration)
-              (funcall eglot-python-preset--original-workspace-configuration server)
-            eglot-python-preset--original-workspace-configuration)))))
+  (let* ((dir (file-name-as-directory (expand-file-name default-directory)))
+         (base-config
+          (or (gethash dir eglot-python-preset--workspace-configs)
+              (when eglot-python-preset--original-workspace-configuration
+                (if (functionp eglot-python-preset--original-workspace-configuration)
+                    (funcall eglot-python-preset--original-workspace-configuration server)
+                  eglot-python-preset--original-workspace-configuration)))))
+    (if eglot-python-preset-workspace-config-plist
+        (eglot-python-preset--merge-plists
+         (or base-config '())
+         eglot-python-preset-workspace-config-plist)
+      base-config)))
 
 (defun eglot-python-preset--init-options ()
   "Return initializationOptions for ty LSP server.
@@ -284,11 +325,15 @@ After removal, run `eglot-python-preset-sync-environment' to recreate it."
     (let ((python-path (eglot-python-preset-get-python-path script-path)))
       (unless python-path
         (user-error "No environment found for this script"))
-      (let ((env-dir (eglot-python-preset--python-env-dir python-path)))
+      (let ((env-dir (eglot-python-preset--python-env-dir python-path))
+            (uv-env-dir (eglot-python-preset--uv-env-dir)))
         (unless env-dir
           (user-error "Could not determine environment directory"))
         (unless (file-directory-p env-dir)
           (user-error "Environment directory does not exist: %s" env-dir))
+        (unless (and uv-env-dir (string-prefix-p uv-env-dir env-dir))
+          (user-error "No uv-managed PEP-723 environment detected:\n\
+Run `eglot-python-preset-sync-environment' to create a managed environment" env-dir))
         (when (yes-or-no-p (format "Delete environment %s? " env-dir))
           (when-let* ((server (eglot-current-server)))
             (eglot-shutdown server))

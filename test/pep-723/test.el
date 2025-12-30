@@ -106,7 +106,8 @@
         (kill-emacs 1))))
 
   (princ "Test 8: Non-PEP-723 dir returns nil (basedpyright)... ")
-  (let ((eglot-python-preset-lsp-server 'basedpyright))
+  (let ((eglot-python-preset-lsp-server 'basedpyright)
+        (eglot-python-preset-workspace-config-plist nil))
     ;; Simulate Eglot looking up config for a directory with no PEP-723 script
     (let* ((other-dir (file-name-as-directory (expand-file-name "/tmp")))
            (config (with-temp-buffer
@@ -117,6 +118,56 @@
       (if (null config)
           (princ "PASS\n")
         (princ (format "FAIL (expected nil, got %S)\n" config))
+        (kill-emacs 1))))
+
+  (princ "Test 8b: Custom workspace config plist (basedpyright)... ")
+  (let ((eglot-python-preset-lsp-server 'basedpyright)
+        (eglot-python-preset-workspace-config-plist
+         '(:basedpyright.analysis
+           (:autoImportCompletions :json-false
+            :typeCheckingMode "basic"))))
+    ;; First, register the config by simulating opening the file
+    (with-current-buffer (find-file-noselect my-pep723-test-script-1)
+      (eglot-python-preset--setup-buffer))
+    ;; Now call the workspace config function
+    (let* ((script-dir (file-name-as-directory
+                        (expand-file-name (file-name-directory my-pep723-test-script-1))))
+           (config (with-temp-buffer
+                     (setq default-directory script-dir)
+                     (if (functionp eglot-workspace-configuration)
+                         (funcall eglot-workspace-configuration nil)
+                       eglot-workspace-configuration))))
+      (if (and (plist-get config :python)
+               (plist-get config :basedpyright.analysis)
+               (eq (plist-get (plist-get config :basedpyright.analysis)
+                              :autoImportCompletions)
+                   :json-false)
+               (equal (plist-get (plist-get config :basedpyright.analysis)
+                                 :typeCheckingMode)
+                      "basic"))
+          (princ "PASS\n")
+        (princ (format "FAIL (got %S)\n" config))
+        (kill-emacs 1))))
+
+  (princ "Test 8c: Custom workspace config without base config... ")
+  (let ((eglot-python-preset-lsp-server 'basedpyright)
+        (eglot-python-preset-workspace-config-plist
+         '(:basedpyright.analysis
+           (:autoImportCompletions :json-false))))
+    ;; Simulate Eglot looking up config for a directory with no PEP-723 script
+    (let* ((other-dir (file-name-as-directory (expand-file-name "/tmp")))
+           (config (with-temp-buffer
+                     (setq default-directory other-dir)
+                     (if (functionp eglot-workspace-configuration)
+                         (funcall eglot-workspace-configuration nil)
+                       eglot-workspace-configuration))))
+      (if (and config
+               (plist-get config :basedpyright.analysis)
+               (eq (plist-get (plist-get config :basedpyright.analysis)
+                              :autoImportCompletions)
+                   :json-false))
+          (princ "PASS\n")
+        (princ (format "FAIL (got %S)\n" config))
         (kill-emacs 1))))
 
   (princ "Test 9: Sync and remove environment... ")
