@@ -29,7 +29,7 @@
 ;; Prerequisites:
 ;;
 ;; - Install uv
-;; - Install ty or basedpyright as a Python language server
+;; - Install ty (>= v0.0.8) or basedpyright as a Python language server
 ;; - Download this file and add it to the load path
 
 ;; Quick start:
