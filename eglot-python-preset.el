@@ -6,18 +6,24 @@
 ;; Author: Michael Olson <mwolson@gnu.org>
 ;; Maintainer: Michael Olson <mwolson@gnu.org>
 ;; URL: https://github.com/mwolson/eglot-python-preset
+;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Keywords: python, convenience, languages, tools
 ;; Package-Requires: ((emacs "30.2") (eglot "1.17"))
 
 ;; This file is NOT part of GNU Emacs.
 
-;; eglot-python-preset is distributed in the hope that it will be useful,
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with eglot-python-preset.  If not, see <https://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -42,6 +48,8 @@
 ;;
 ;; After that, opening Python files will automatically start the LSP server using
 ;; Eglot and handle PEP-723 magic tags within files.
+
+;;; Code:
 
 (require 'cl-lib)
 
@@ -73,6 +81,7 @@
 
 (defun eglot-python-preset-has-metadata-p (&optional file)
   "Return non-nil if FILE contains PEP-723 script metadata.
+
 If FILE is nil, use the current buffer's file.
 Scans first 2KB for `# /// script' ... `# ///' block."
   (let* ((file (or file (buffer-file-name)))
@@ -87,6 +96,7 @@ Scans first 2KB for `# /// script' ... `# ///' block."
 
 (defun eglot-python-preset--uv-env-dir ()
   "Return the uv script environments directory.
+
 Uses `uv cache dir` to get the cache location, then appends environments-v2/."
   (let ((cache-dir (string-trim (shell-command-to-string "uv cache dir"))))
     (unless (string-empty-p cache-dir)
@@ -95,6 +105,7 @@ Uses `uv cache dir` to get the cache location, then appends environments-v2/."
 
 (defun eglot-python-preset-get-python-path (script-path)
   "Get Python interpreter path for SCRIPT-PATH using uv.
+
 Runs `uv python find --script SCRIPT-PATH'.
 Displays a warning if the environment needs to be synced.
 Returns the Python path, or nil if uv is not available."
@@ -124,6 +135,7 @@ Returns the Python path, or nil if uv is not available."
 
 (defun eglot-python-preset--python-env-dir (python-path)
   "Return the environment directory for PYTHON-PATH.
+
 Given a path like /path/to/env/bin/python3, return /path/to/env/."
   (when python-path
     (let ((bin-dir (file-name-directory python-path)))
@@ -132,6 +144,7 @@ Given a path like /path/to/env/bin/python3, return /path/to/env/."
 
 (defvar eglot-python-preset--workspace-configs (make-hash-table :test 'equal)
   "Hash table mapping directory paths to workspace configurations.
+
 Used by basedpyright to look up script configurations for PEP-723.")
 
 (defvar eglot-python-preset--original-workspace-configuration nil
@@ -139,6 +152,8 @@ Used by basedpyright to look up script configurations for PEP-723.")
 
 (defun eglot-python-preset--workspace-config-fn (server)
   "Return workspace configuration for the current `default-directory'.
+
+SERVER is the Eglot server instance, passed to fallback configuration.
 Looks up configuration from `eglot-python-preset--workspace-configs'.
 Falls back to original `eglot-workspace-configuration' for non-PEP-723 dirs."
   (let ((dir (file-name-as-directory (expand-file-name default-directory))))
@@ -150,6 +165,7 @@ Falls back to original `eglot-workspace-configuration' for non-PEP-723 dirs."
 
 (defun eglot-python-preset--init-options ()
   "Return initializationOptions for ty LSP server.
+
 For PEP-723 scripts, includes environment configuration.
 Only used for ty; basedpyright uses workspace configuration instead."
   (when (eq eglot-python-preset-lsp-server 'ty)
@@ -166,6 +182,7 @@ Only used for ty; basedpyright uses workspace configuration instead."
 
 (defun eglot-python-preset--server-contact (_interactive)
   "Return the server contact spec for Python LSP.
+
 Includes initializationOptions for ty with PEP-723 scripts."
   (let ((command (pcase eglot-python-preset-lsp-server
                    ('ty '("ty" "server"))
@@ -177,7 +194,9 @@ Includes initializationOptions for ty with PEP-723 scripts."
 
 (defun eglot-python-preset--setup-buffer ()
   "Configure Eglot settings for a PEP-723 script.
-For basedpyright, registers configuration in `eglot-python-preset--workspace-configs'."
+
+For basedpyright, registers configuration in the variable
+`eglot-python-preset--workspace-configs'."
   (when (eq eglot-python-preset-lsp-server 'basedpyright)
     (when-let* ((file (buffer-file-name))
                 ((eglot-python-preset-has-metadata-p file))
@@ -196,6 +215,7 @@ For basedpyright, registers configuration in `eglot-python-preset--workspace-con
 
 (defun eglot-python-preset--project-find (dir)
   "Project detection for Python files.
+
 For PEP-723 scripts, returns (python-project . SCRIPT-DIR).
 Otherwise, returns (python-project . ROOT) if DIR is inside a Python project."
   (cond
@@ -207,20 +227,22 @@ Otherwise, returns (python-project . ROOT) if DIR is inside a Python project."
       (cons 'python-project root)))))
 
 (cl-defmethod project-root ((project (head python-project)))
+  "Return root directory of PROJECT."
   (cdr project))
 
 ;;;###autoload
 (defun eglot-python-preset-sync-environment ()
   "Sync the current PEP-723 script's environment, then restart Eglot.
+
 Runs `uv sync --script' on the current file.
-Uses shutdown + eglot-ensure instead of reconnect so that
+Uses shutdown + `eglot-ensure' instead of reconnect so that
 initializationOptions are recomputed (needed for ty)."
   (interactive)
   (let ((script-path (buffer-file-name)))
     (unless script-path
       (user-error "No file associated with buffer"))
     (unless (executable-find "uv")
-      (user-error "uv not found"))
+      (user-error "Installation for uv not found"))
     (unless (eglot-python-preset-has-metadata-p script-path)
       (user-error "Buffer does not contain PEP-723 metadata"))
     (let* ((default-directory (file-name-directory script-path))
@@ -249,6 +271,7 @@ initializationOptions are recomputed (needed for ty)."
 ;;;###autoload
 (defun eglot-python-preset-setup ()
   "Set up Eglot to support Python modes, including PEP-723 support.
+
 Adds hooks for project detection and Eglot configuration.
 Configures `eglot-server-programs' based on `eglot-python-preset-lsp-server'.
 Call this after loading Eglot."
