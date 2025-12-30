@@ -1,0 +1,25 @@
+{
+  "name": "eglot-python-preset",
+  "version": "1.0.0",
+  "description": "Python LSP preset for Emacs using Eglot",
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "GPL-3.0",
+  "scripts": {
+    "init": "bun run up && bun run init:hooks",
+    "fix:md": "prettier --write '**/*.md'",
+    "fix:md:file": "prettier --write",
+    "fix:yaml": "prettier --write '**/*.yaml'",
+    "fix:yaml:file": "prettier --write",
+    "hooks:pre-commit": "lefthook run pre-commit",
+    "hooks:pre-commit:all": "lefthook run pre-commit --all-files",
+    "test": "emacs -Q --batch -l eglot-python-preset.el -l test/pep-723/test.el",
+    "up": "mise use -g bun@latest && mise install && bun install"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "lefthook": "^2.0.13",
+    "prettier": "^3.7.4"
+  }
+}
