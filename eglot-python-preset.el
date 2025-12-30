@@ -79,20 +79,17 @@
   :type '(repeat string)
   :group 'eglot-python-preset)
 
-(defun eglot-python-preset-has-metadata-p (&optional file)
-  "Return non-nil if FILE contains PEP-723 script metadata.
-
-If FILE is nil, use the current buffer's file.
-Scans first 2KB for `# /// script' ... `# ///' block."
-  (let* ((file (or file (buffer-file-name)))
-         (case-fold-search nil))
-    (when file
+(defun eglot-python-preset-has-metadata-p ()
+  "Return non-nil if current buffer contains PEP-723 script metadata."
+  (let ((case-fold-search nil))
+    (when (buffer-file-name)
       (save-match-data
-        (with-temp-buffer
-          (insert-file-contents-literally file nil 0 2048)
-          (goto-char (point-min))
-          (when (re-search-forward "^# /// script$" nil t)
-            (re-search-forward "^# ///$" nil t)))))))
+        (save-excursion
+          (save-restriction
+            (widen)
+            (goto-char (point-min))
+            (when (re-search-forward "^# /// script$" nil t)
+              (re-search-forward "^# ///$" nil t))))))))
 
 (defun eglot-python-preset--uv-env-dir ()
   "Return the uv script environments directory.
@@ -170,7 +167,7 @@ For PEP-723 scripts, includes environment configuration.
 Only used for ty; basedpyright uses workspace configuration instead."
   (when (eq eglot-python-preset-lsp-server 'ty)
     (when-let* ((file (buffer-file-name))
-                ((eglot-python-preset-has-metadata-p file))
+                ((eglot-python-preset-has-metadata-p))
                 (script-dir (file-name-directory file))
                 (python-path (eglot-python-preset-get-python-path file)))
       (let ((env-dir (or (eglot-python-preset--python-env-dir python-path)
@@ -199,7 +196,7 @@ For basedpyright, registers configuration in the variable
 `eglot-python-preset--workspace-configs'."
   (when (eq eglot-python-preset-lsp-server 'basedpyright)
     (when-let* ((file (buffer-file-name))
-                ((eglot-python-preset-has-metadata-p file))
+                ((eglot-python-preset-has-metadata-p))
                 (script-dir (file-name-as-directory
                              (expand-file-name (file-name-directory file))))
                 (python-path (eglot-python-preset-get-python-path file)))
@@ -243,14 +240,16 @@ initializationOptions are recomputed (needed for ty)."
       (user-error "No file associated with buffer"))
     (unless (executable-find "uv")
       (user-error "Installation for uv not found"))
-    (unless (eglot-python-preset-has-metadata-p script-path)
+    (unless (eglot-python-preset-has-metadata-p)
       (user-error "Buffer does not contain PEP-723 metadata"))
     (let* ((default-directory (file-name-directory script-path))
            (status (call-process "uv" nil nil nil "sync" "--script"
                                  script-path)))
       (if (zerop status)
           (progn
-            (message "Environment synced successfully")
+            (when-let* ((win (get-buffer-window "*Warnings*")))
+              (delete-window win))
+            (message "Environment synced successfully, restarting eglot")
             (when-let* ((server (eglot-current-server)))
               (eglot-shutdown server))
             (eglot-ensure))
@@ -263,10 +262,41 @@ initializationOptions are recomputed (needed for ty)."
   (let ((script-path (buffer-file-name)))
     (unless script-path
       (user-error "No file associated with buffer"))
-    (unless (eglot-python-preset-has-metadata-p script-path)
+    (unless (eglot-python-preset-has-metadata-p)
       (user-error "Buffer does not contain PEP-723 metadata"))
     (let ((default-directory (file-name-directory script-path)))
       (compile (format "uv run %s" (shell-quote-argument script-path))))))
+
+;;;###autoload
+(defun eglot-python-preset-remove-environment ()
+  "Remove the cached uv environment for the current PEP-723 script.
+
+This deletes the environment directory created by uv for this script.
+After removal, run `eglot-python-preset-sync-environment' to recreate it."
+  (interactive)
+  (let ((script-path (buffer-file-name)))
+    (unless script-path
+      (user-error "No file associated with buffer"))
+    (unless (executable-find "uv")
+      (user-error "Installation for uv not found"))
+    (unless (eglot-python-preset-has-metadata-p)
+      (user-error "Buffer does not contain PEP-723 metadata"))
+    (let ((python-path (eglot-python-preset-get-python-path script-path)))
+      (unless python-path
+        (user-error "No environment found for this script"))
+      (let ((env-dir (eglot-python-preset--python-env-dir python-path)))
+        (unless env-dir
+          (user-error "Could not determine environment directory"))
+        (unless (file-directory-p env-dir)
+          (user-error "Environment directory does not exist: %s" env-dir))
+        (when (yes-or-no-p (format "Delete environment %s? " env-dir))
+          (when-let* ((server (eglot-current-server)))
+            (eglot-shutdown server))
+          (delete-directory env-dir t)
+          (remhash (file-name-as-directory
+                    (expand-file-name (file-name-directory script-path)))
+                   eglot-python-preset--workspace-configs)
+          (message "Environment removed: %s" env-dir))))))
 
 ;;;###autoload
 (defun eglot-python-preset-setup ()

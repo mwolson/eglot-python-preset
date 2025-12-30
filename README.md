@@ -122,6 +122,11 @@ When you open a file containing PEP-723 metadata:
   current PEP-723 script using `uv sync --script`, then restart Eglot. Use this
   after adding or modifying dependencies in your script's metadata block.
 
+- **`M-x eglot-python-preset-remove-environment`** - Remove the cached uv
+  environment for the current PEP-723 script. Useful when you want to force a
+  clean reinstall of dependencies or troubleshoot environment issues. After
+  removal, run `eglot-python-preset-sync-environment` to recreate it.
+
 - **`M-x eglot-python-preset-run-script`** - Run the current PEP-723 script
   using `uv run`. Opens a compilation buffer with the output.
 

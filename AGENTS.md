@@ -8,8 +8,18 @@ Prefer to write plans in the `plans/` directory.
 
 ## Dev loop tools
 
-Here are some strategies to obtain a reliable “dev loop” for validating
+Here are some strategies to obtain a reliable "dev loop" for validating
 formatter integrations.
+
+### Running tests
+
+Run tests with:
+
+```sh
+bun run test
+```
+
+This executes the test suite found in `test/pep-723/test.el`.
 
 ### Introspecting Elisp functions/variables from CLI
 
