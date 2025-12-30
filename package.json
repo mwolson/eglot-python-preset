@@ -8,6 +8,7 @@
   "license": "GPL-3.0",
   "scripts": {
     "init": "bun run up && bun run init:hooks",
+    "init:hooks": "lefthook install",
     "fix:md": "prettier --write '**/*.md'",
     "fix:md:file": "prettier --write",
     "fix:yaml": "prettier --write '**/*.yaml'",
