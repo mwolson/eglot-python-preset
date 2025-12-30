@@ -49,6 +49,20 @@
 ;; After that, opening Python files will automatically start the LSP server using
 ;; Eglot and handle PEP-723 magic tags within files.
 
+;; Workspace configuration (basedpyright):
+;;
+;; To customize basedpyright settings, set `eglot-workspace-configuration'
+;; before calling `eglot-python-preset-setup'.  Your settings will be merged
+;; with PEP-723 script configurations (which add :python :pythonPath).
+;;
+;; Example:
+;;
+;;   (setopt eglot-workspace-configuration
+;;           '(:basedpyright.analysis
+;;             (:autoImportCompletions :json-false
+;;              :typeCheckingMode "basic")))
+;;   (eglot-python-preset-setup)
+
 ;;; Code:
 
 (require 'cl-lib)
@@ -79,21 +93,7 @@
   :type '(repeat string)
   :group 'eglot-python-preset)
 
-;;;###autoload
-(defcustom eglot-python-preset-workspace-config-plist nil
-  "Additional workspace configuration plist to send to the LSP server.
 
-This plist is merged into the workspace/configuration response.
-Currently only used with basedpyright.
-
-Example to disable auto-import completions and set type checking mode:
-
-  (setopt eglot-python-preset-workspace-config-plist
-          \\='(:basedpyright.analysis
-            (:autoImportCompletions :json-false
-             :typeCheckingMode \"basic\")))"
-  :type '(plist)
-  :group 'eglot-python-preset)
 
 (defun eglot-python-preset-has-metadata-p ()
   "Return non-nil if current buffer contains PEP-723 script metadata."
@@ -186,20 +186,13 @@ If both values are plists, merge them recursively."
 
 SERVER is the Eglot server instance, passed to fallback configuration.
 Looks up configuration from `eglot-python-preset--workspace-configs'.
-Merges `eglot-python-preset-workspace-config-plist' into the result.
 Falls back to original `eglot-workspace-configuration' for non-PEP-723 dirs."
-  (let* ((dir (file-name-as-directory (expand-file-name default-directory)))
-         (base-config
-          (or (gethash dir eglot-python-preset--workspace-configs)
-              (when eglot-python-preset--original-workspace-configuration
-                (if (functionp eglot-python-preset--original-workspace-configuration)
-                    (funcall eglot-python-preset--original-workspace-configuration server)
-                  eglot-python-preset--original-workspace-configuration)))))
-    (if eglot-python-preset-workspace-config-plist
-        (eglot-python-preset--merge-plists
-         (or base-config '())
-         eglot-python-preset-workspace-config-plist)
-      base-config)))
+  (let ((dir (file-name-as-directory (expand-file-name default-directory))))
+    (or (gethash dir eglot-python-preset--workspace-configs)
+        (when eglot-python-preset--original-workspace-configuration
+          (if (functionp eglot-python-preset--original-workspace-configuration)
+              (funcall eglot-python-preset--original-workspace-configuration server)
+            eglot-python-preset--original-workspace-configuration)))))
 
 (defun eglot-python-preset--init-options ()
   "Return initializationOptions for ty LSP server.
@@ -234,16 +227,25 @@ Includes initializationOptions for ty with PEP-723 scripts."
   "Configure Eglot settings for a PEP-723 script.
 
 For basedpyright, registers configuration in the variable
-`eglot-python-preset--workspace-configs'."
+`eglot-python-preset--workspace-configs', merging with any original
+user configuration in `eglot-workspace-configuration'."
   (when (eq eglot-python-preset-lsp-server 'basedpyright)
     (when-let* ((file (buffer-file-name))
                 ((eglot-python-preset-has-metadata-p))
                 (script-dir (file-name-as-directory
                              (expand-file-name (file-name-directory file))))
                 (python-path (eglot-python-preset-get-python-path file)))
-      (puthash script-dir
-               `(:python (:pythonPath ,python-path))
-               eglot-python-preset--workspace-configs))))
+      (let* ((original eglot-python-preset--original-workspace-configuration)
+             (base-config (cond
+                           ((functionp original) (funcall original nil))
+                           ((consp original) original)
+                           (t nil)))
+             (script-config `(:python (:pythonPath ,python-path)))
+             (merged-config (eglot-python-preset--merge-plists
+                             (or base-config '())
+                             script-config)))
+        (puthash script-dir merged-config
+                 eglot-python-preset--workspace-configs)))))
 
 (defun eglot-python-preset--python-project-root-p (dir)
   "Return non-nil if DIR contains a Python project marker file."
@@ -257,7 +259,7 @@ For basedpyright, registers configuration in the variable
 For PEP-723 scripts, returns (python-project . SCRIPT-DIR).
 Otherwise, returns (python-project . ROOT) if DIR is inside a Python project."
   (cond
-   ((and (memq major-mode '(python-mode python-ts-mode))
+   ((and (derived-mode-p 'python-base-mode)
          (eglot-python-preset-has-metadata-p))
     (cons 'python-project (file-name-directory (buffer-file-name))))
    ((when-let* ((root (locate-dominating-file
@@ -363,10 +365,8 @@ Call this after loading Eglot."
             (default-value 'eglot-workspace-configuration))
       (setq-default eglot-workspace-configuration
                     #'eglot-python-preset--workspace-config-fn)))
-  (add-hook 'python-mode-hook #'eglot-python-preset--setup-buffer t)
-  (add-hook 'python-ts-mode-hook #'eglot-python-preset--setup-buffer t)
-  (add-hook 'python-mode-hook #'eglot-ensure t)
-  (add-hook 'python-ts-mode-hook #'eglot-ensure t))
+  (add-hook 'python-base-mode-hook #'eglot-python-preset--setup-buffer t)
+  (add-hook 'python-base-mode-hook #'eglot-ensure t))
 
 (provide 'eglot-python-preset)
 ;;; eglot-python-preset.el ends here

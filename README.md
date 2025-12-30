@@ -40,8 +40,9 @@ will automatically start the LSP server using Eglot.
 (use-package eglot-python-preset
   :ensure t
   :after eglot
+  :custom
+  (eglot-python-preset-lsp-server 'ty) ; or 'basedpyright
   :config
-  (setopt eglot-python-preset-lsp-server 'ty) ; or 'basedpyright
   (eglot-python-preset-setup))
 ```
 -->
@@ -60,8 +61,9 @@ Add to your Emacs configuration:
 ```elisp
 (use-package eglot-python-preset
   :load-path "~/devel/eglot-python-preset"
+  :custom
+  (eglot-python-preset-lsp-server 'ty) ; or 'basedpyright
   :config
-  (setopt eglot-python-preset-lsp-server 'ty) ; or 'basedpyright
   (eglot-python-preset-setup))
 ```
 
@@ -151,19 +153,35 @@ Files that indicate a Python project root:
         '("pyproject.toml" "requirements.txt"))  ; default
 ```
 
-### `eglot-python-preset-workspace-config-plist`
+### Workspace Configuration (basedpyright)
 
-Additional workspace configuration to send to the LSP server. This plist is
-merged into the `workspace/configuration` response. Currently only used with
-basedpyright.
+To customize basedpyright settings, set `eglot-workspace-configuration` before
+calling `eglot-python-preset-setup`. Your settings will be merged with PEP-723
+script configurations (which add the Python interpreter path).
 
 Example to disable auto-import completions and set type checking mode:
 
 ```elisp
-(setopt eglot-python-preset-workspace-config-plist
-        '(:basedpyright.analysis
-          (:autoImportCompletions :json-false
-           :typeCheckingMode "basic")))
+;; With use-package
+(use-package eglot-python-preset
+  :load-path "~/devel/eglot-python-preset"
+  :custom
+  (eglot-python-preset-lsp-server 'basedpyright)
+  (eglot-workspace-configuration
+   '(:basedpyright.analysis
+     (:autoImportCompletions :json-false
+      :typeCheckingMode "basic")))
+  :config
+  (eglot-python-preset-setup))
+
+;; Or manually (can be spread across multiple init.el sections)
+(setopt eglot-python-preset-lsp-server 'basedpyright)
+(setopt eglot-workspace-configuration
+        (plist-put eglot-workspace-configuration
+                   :basedpyright.analysis
+                   '(:autoImportCompletions :json-false
+                     :typeCheckingMode "basic")))
+(eglot-python-preset-setup)
 ```
 
 ## Notes
