@@ -139,15 +139,29 @@ When the user provides a version (or indicates major/minor/bugfix):
    git push origin v<version>
    ```
 
-2. Create a draft GitHub release with release notes deduced from changes since
-   the prior release tag:
+2. Create a draft GitHub release with release notes:
 
    ```sh
    git log <previous-tag>..HEAD --oneline
-   gh release create v<version> --draft --generate-notes
+   gh release create v<version> --draft --title "v<version>" --generate-notes
    ```
 
-3. Tell the user to review the draft release and provide a link:
+3. Enhance the release notes with more context:
+   - Review the commits since the last tag using `git show <commit>` to
+     understand the changes
+   - Group related changes under descriptive headings (e.g., "### Refactored X",
+     "### Fixed Y")
+   - Use bullet lists within each section to describe the changes
+   - Include a brief summary of what changed and why it matters
+   - Keep the "Full Changelog" link at the bottom
+   - Update the release with `gh release edit v<version> --notes "..."`
+
+   Ordering guidelines:
+   - Put user-visible changes first (new features, bug fixes, breaking changes)
+   - Put under-the-hood changes later (refactoring, internal improvements, docs)
+   - Within each section, order by user impact (most impactful first)
+
+4. Tell the user to review the draft release and provide a link:
 
    ```
    https://github.com/mwolson/eglot-python-preset/releases
