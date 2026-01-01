@@ -71,76 +71,113 @@
           (princ "FAIL\n")
           (kill-emacs 1)))))
 
-  (princ "Test 6: Workspace config hash table (basedpyright)... ")
+  (princ "Test 6a: Workspace config advice with directory path (basedpyright)... ")
   (let ((eglot-python-preset-lsp-server 'basedpyright))
     (with-current-buffer (find-file-noselect my-pep723-test-script-1)
-      (eglot-python-preset--setup-buffer)
-      ;; Config is stored in hash table keyed by directory
-      (let* ((script-dir (file-name-as-directory
-                          (expand-file-name (file-name-directory my-pep723-test-script-1))))
-             (config (gethash script-dir eglot-python-preset--workspace-configs)))
+      ;; Test with directory path (simulates workspace/configuration request with scopeUri)
+      ;; Uses managed buffer since path is a directory
+      (let* ((mock-server (list :managed-buffers (list (current-buffer))))
+             (config (cl-letf (((symbol-function 'eglot--managed-buffers)
+                                (lambda (_s) (plist-get mock-server :managed-buffers))))
+                       (eglot-python-preset--workspace-configuration-plist-a
+                        (lambda (_server &optional _path) nil)
+                        mock-server
+                        my-pep723-test-dir))))
         (if (plist-get config :python)
             (princ "PASS\n")
           (princ "FAIL\n")
           (kill-emacs 1)))))
 
-  (princ "Test 7: Workspace config lookup via function (basedpyright)... ")
+  (princ "Test 6b: Workspace config advice without path arg (basedpyright)... ")
   (let ((eglot-python-preset-lsp-server 'basedpyright))
-    ;; First, register the config by simulating opening the file
     (with-current-buffer (find-file-noselect my-pep723-test-script-1)
-      (eglot-python-preset--setup-buffer))
-    ;; Now call eglot-python-preset-setup to install our function as default
-    (eglot-python-preset-setup)
-    ;; Simulate what Eglot does: create a temp buffer, set default-directory,
-    ;; and call eglot-workspace-configuration
-    (let* ((script-dir (file-name-as-directory
-                        (expand-file-name (file-name-directory my-pep723-test-script-1))))
-           (config (with-temp-buffer
-                     (setq default-directory script-dir)
-                     (if (functionp eglot-workspace-configuration)
-                         (funcall eglot-workspace-configuration nil)
-                       eglot-workspace-configuration))))
-      (if (plist-get config :python)
+      ;; Test without path arg (simulates didChangeConfiguration)
+      ;; Mock server with this buffer as managed buffer
+      (let* ((mock-server (list :managed-buffers (list (current-buffer))))
+             (config (cl-letf (((symbol-function 'eglot--managed-buffers)
+                                (lambda (_s) (plist-get mock-server :managed-buffers))))
+                       (eglot-python-preset--workspace-configuration-plist-a
+                        (lambda (_server &optional _path) nil)
+                        mock-server
+                        nil))))
+        (if (plist-get config :python)
+            (princ "PASS\n")
+          (princ "FAIL\n")
+          (kill-emacs 1)))))
+
+  (princ "Test 6c: Advice with no managed buffers returns base config... ")
+  (let ((eglot-python-preset-lsp-server 'basedpyright)
+        (base-config '(:some (:setting "value"))))
+    ;; Mock server with no managed buffers
+    (let* ((mock-server (list :managed-buffers nil))
+           (config (cl-letf (((symbol-function 'eglot--managed-buffers)
+                              (lambda (_s) (plist-get mock-server :managed-buffers))))
+                     (eglot-python-preset--workspace-configuration-plist-a
+                      (lambda (_server &optional _path) base-config)
+                      mock-server
+                      my-pep723-test-dir))))
+      (if (and (equal config base-config)
+               (not (plist-get config :python)))
           (princ "PASS\n")
         (princ (format "FAIL (got %S)\n" config))
         (kill-emacs 1))))
 
-  (princ "Test 8: Non-PEP-723 dir returns nil (basedpyright)... ")
+  (princ "Test 7: Non-PEP-723 file returns base config unchanged... ")
   (let ((eglot-python-preset-lsp-server 'basedpyright)
-        (eglot-python-preset-workspace-config-plist nil))
-    ;; Simulate Eglot looking up config for a directory with no PEP-723 script
-    (let* ((other-dir (file-name-as-directory (expand-file-name "/tmp")))
-           (config (with-temp-buffer
-                     (setq default-directory other-dir)
-                     (if (functionp eglot-workspace-configuration)
-                         (funcall eglot-workspace-configuration nil)
-                       eglot-workspace-configuration))))
-      (if (null config)
-          (princ "PASS\n")
-        (princ (format "FAIL (expected nil, got %S)\n" config))
-        (kill-emacs 1))))
+        (regular-py (make-temp-file "test" nil ".py" "print('hello')\n")))
+    (unwind-protect
+        (with-current-buffer (find-file-noselect regular-py)
+          (let* ((base-config '(:basedpyright (:setting "value")))
+                 (mock-server (list :managed-buffers (list (current-buffer))))
+                 (config (cl-letf (((symbol-function 'eglot--managed-buffers)
+                                    (lambda (_s) (plist-get mock-server :managed-buffers))))
+                           (eglot-python-preset--workspace-configuration-plist-a
+                            (lambda (_server &optional _path) base-config)
+                            mock-server
+                            "/tmp"))))
+            (if (and (equal config base-config)
+                     (not (plist-get config :python)))
+                (princ "PASS\n")
+              (princ (format "FAIL (got %S)\n" config))
+              (kill-emacs 1))))
+      (delete-file regular-py)))
+
+  (princ "Test 8: Non-basedpyright server returns base config unchanged... ")
+  (let ((eglot-python-preset-lsp-server 'ty))
+    (with-current-buffer (find-file-noselect my-pep723-test-script-1)
+      (let* ((base-config '(:some (:config "value")))
+             (mock-server (list :managed-buffers (list (current-buffer))))
+             (config (cl-letf (((symbol-function 'eglot--managed-buffers)
+                                (lambda (_s) (plist-get mock-server :managed-buffers))))
+                       (eglot-python-preset--workspace-configuration-plist-a
+                        (lambda (_server &optional _path) base-config)
+                        mock-server
+                        my-pep723-test-dir))))
+        (if (equal config base-config)
+            (princ "PASS\n")
+          (princ (format "FAIL (got %S)\n" config))
+          (kill-emacs 1)))))
 
   (princ "Test 8b: PEP-723 script merges with user's eglot-workspace-configuration... ")
-  (clrhash eglot-python-preset--workspace-configs)
   (let ((eglot-python-preset-lsp-server 'basedpyright)
-        (eglot-python-preset--original-workspace-configuration
-         '(:basedpyright.analysis (:typeCheckingMode "strict"))))
-    ;; Register the config by simulating opening the file
+        (user-config '(:basedpyright.analysis (:typeCheckingMode "strict"))))
     (with-current-buffer (find-file-noselect my-pep723-test-script-1)
-      (eglot-python-preset--setup-buffer))
-    ;; Check that merged config has both :python and original settings
-    (let* ((script-dir (file-name-as-directory
-                        (expand-file-name (file-name-directory my-pep723-test-script-1))))
-           (config (gethash script-dir eglot-python-preset--workspace-configs)))
-      (if (and (plist-get config :python)
-               (plist-get (plist-get config :python) :pythonPath)
-               (plist-get config :basedpyright.analysis)
-               (equal (plist-get (plist-get config :basedpyright.analysis)
-                                 :typeCheckingMode)
-                      "strict"))
-          (princ "PASS\n")
-        (princ (format "FAIL (got %S)\n" config))
-        (kill-emacs 1))))
+      (let* ((mock-server (list :managed-buffers (list (current-buffer))))
+             (config (cl-letf (((symbol-function 'eglot--managed-buffers)
+                                (lambda (_s) (plist-get mock-server :managed-buffers))))
+                       (eglot-python-preset--workspace-configuration-plist-a
+                        (lambda (_server &optional _path) user-config)
+                        mock-server
+                        my-pep723-test-dir))))
+        (if (and (plist-get config :python)
+                 (plist-get (plist-get config :python) :pythonPath)
+                 (plist-get config :basedpyright.analysis)
+                 (equal (plist-get (plist-get config :basedpyright.analysis)
+                                   :typeCheckingMode)
+                        "strict"))
+            (princ "PASS\n")
+          (princ (format "FAIL (got %S)\n" config))
+          (kill-emacs 1)))))
 
   (princ "Test 9: Sync and remove environment... ")
   (if (not (executable-find "uv"))

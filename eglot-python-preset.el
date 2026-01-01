@@ -93,8 +93,6 @@
   :type '(repeat string)
   :group 'eglot-python-preset)
 
-
-
 (defun eglot-python-preset-has-metadata-p ()
   "Return non-nil if current buffer contains PEP-723 script metadata."
   (let ((case-fold-search nil))
@@ -116,6 +114,9 @@ Uses `uv cache dir` to get the cache location, then appends environments-v2/."
       (file-name-as-directory
        (expand-file-name "environments-v2" cache-dir)))))
 
+(defvar eglot-python-preset--warned-scripts (make-hash-table :test 'equal)
+  "Hash table tracking scripts we've warned about unsynced environments.")
+
 (defun eglot-python-preset-get-python-path (script-path)
   "Get Python interpreter path for SCRIPT-PATH using uv.
 
@@ -135,15 +136,18 @@ Returns the Python path, or nil if uv is not available."
            (python-path (string-trim output)))
       (cond
        ((string-empty-p python-path)
-        (message "[eglot-python-preset] uv couldn't find Python for %s" script-path)
+        (message "[eglot-python-preset] uv couldn't find Python for %s"
+                 script-path)
         nil)
        ((and env-dir (string-prefix-p env-dir python-path))
         python-path)
        (t
-        (display-warning
-         'eglot-python-preset
-         "Environment not synced. Run M-x eglot-python-preset-sync-environment"
-         :warning)
+        (unless (gethash script-path eglot-python-preset--warned-scripts)
+          (puthash script-path t eglot-python-preset--warned-scripts)
+          (display-warning
+           'eglot-python-preset
+           "Environment not synced. Run M-x eglot-python-preset-sync-environment"
+           :warning))
         python-path)))))
 
 (defun eglot-python-preset--python-env-dir (python-path)
@@ -154,14 +158,6 @@ Given a path like /path/to/env/bin/python3, return /path/to/env/."
     (let ((bin-dir (file-name-directory python-path)))
       (when (string-match-p "/bin/?$" bin-dir)
         (file-name-directory (directory-file-name bin-dir))))))
-
-(defvar eglot-python-preset--workspace-configs (make-hash-table :test 'equal)
-  "Hash table mapping directory paths to workspace configurations.
-
-Used by basedpyright to look up script configurations for PEP-723.")
-
-(defvar eglot-python-preset--original-workspace-configuration nil
-  "Original value of `eglot-workspace-configuration' before we modified it.")
 
 (defun eglot-python-preset--merge-plists (base override)
   "Recursively merge OVERRIDE plist into BASE plist.
@@ -177,22 +173,29 @@ If both values are plists, merge them recursively."
                                             (listp val)
                                             (keywordp (car-safe base-val))
                                             (keywordp (car-safe val)))
-                                       (eglot-python-preset--merge-plists base-val val)
+                                       (eglot-python-preset--merge-plists
+                                        base-val val)
                                      val)))))
     result))
 
-(defun eglot-python-preset--workspace-config-fn (server)
-  "Return workspace configuration for the current `default-directory'.
+(defun eglot-python-preset--workspace-configuration-plist-a (orig-fn server &optional path)
+  "Advice to merge PEP-723 Python path into workspace configuration.
 
-SERVER is the Eglot server instance, passed to fallback configuration.
-Looks up configuration from `eglot-python-preset--workspace-configs'.
-Falls back to original `eglot-workspace-configuration' for non-PEP-723 dirs."
-  (let ((dir (file-name-as-directory (expand-file-name default-directory))))
-    (or (gethash dir eglot-python-preset--workspace-configs)
-        (when eglot-python-preset--original-workspace-configuration
-          (if (functionp eglot-python-preset--original-workspace-configuration)
-              (funcall eglot-python-preset--original-workspace-configuration server)
-            eglot-python-preset--original-workspace-configuration)))))
+Calls ORIG-FN with SERVER and PATH arguments, then merges :python :pythonPath
+for PEP-723 scripts when using basedpyright.
+
+Gets the first managed buffer from SERVER to check for PEP-723 metadata,
+since PATH is typically a directory (project root) or nil."
+  (let ((base-config (funcall orig-fn server path)))
+    (if-let* (((eq eglot-python-preset-lsp-server 'basedpyright))
+              (buf (car (eglot--managed-buffers server)))
+              (file-path (buffer-file-name buf))
+              ((with-current-buffer buf (eglot-python-preset-has-metadata-p)))
+              (python-path (eglot-python-preset-get-python-path file-path)))
+        (eglot-python-preset--merge-plists
+         base-config
+         `(:python (:pythonPath ,python-path)))
+      base-config)))
 
 (defun eglot-python-preset--init-options ()
   "Return initializationOptions for ty LSP server.
@@ -223,30 +226,6 @@ Includes initializationOptions for ty with PEP-723 scripts."
         `(,@command :initializationOptions ,init-options)
       command)))
 
-(defun eglot-python-preset--setup-buffer ()
-  "Configure Eglot settings for a PEP-723 script.
-
-For basedpyright, registers configuration in the variable
-`eglot-python-preset--workspace-configs', merging with any original
-user configuration in `eglot-workspace-configuration'."
-  (when (eq eglot-python-preset-lsp-server 'basedpyright)
-    (when-let* ((file (buffer-file-name))
-                ((eglot-python-preset-has-metadata-p))
-                (script-dir (file-name-as-directory
-                             (expand-file-name (file-name-directory file))))
-                (python-path (eglot-python-preset-get-python-path file)))
-      (let* ((original eglot-python-preset--original-workspace-configuration)
-             (base-config (cond
-                           ((functionp original) (funcall original nil))
-                           ((consp original) original)
-                           (t nil)))
-             (script-config `(:python (:pythonPath ,python-path)))
-             (merged-config (eglot-python-preset--merge-plists
-                             (or base-config '())
-                             script-config)))
-        (puthash script-dir merged-config
-                 eglot-python-preset--workspace-configs)))))
-
 (defun eglot-python-preset--python-project-root-p (dir)
   "Return non-nil if DIR contains a Python project marker file."
   (seq-some (lambda (file)
@@ -256,15 +235,20 @@ user configuration in `eglot-workspace-configuration'."
 (defun eglot-python-preset--project-find (dir)
   "Project detection for Python files.
 
-For PEP-723 scripts, returns (python-project . SCRIPT-DIR).
+For PEP-723 scripts, returns (python-script . SCRIPT-PATH) so each script
+gets its own eglot server instance.
 Otherwise, returns (python-project . ROOT) if DIR is inside a Python project."
   (cond
    ((and (derived-mode-p 'python-base-mode)
          (eglot-python-preset-has-metadata-p))
-    (cons 'python-project (file-name-directory (buffer-file-name))))
+    (cons 'python-script (buffer-file-name)))
    ((when-let* ((root (locate-dominating-file
                        dir #'eglot-python-preset--python-project-root-p)))
       (cons 'python-project root)))))
+
+(cl-defmethod project-root ((project (head python-script)))
+  "Return directory containing the script for PROJECT."
+  (file-name-directory (cdr project)))
 
 (cl-defmethod project-root ((project (head python-project)))
   "Return root directory of PROJECT."
@@ -290,6 +274,7 @@ initializationOptions are recomputed (needed for ty)."
                                  script-path)))
       (if (zerop status)
           (progn
+            (remhash script-path eglot-python-preset--warned-scripts)
             (when-let* ((win (get-buffer-window "*Warnings*")))
               (delete-window win))
             (message "Environment synced successfully, restarting eglot")
@@ -340,9 +325,6 @@ Run `eglot-python-preset-sync-environment' to create a managed environment" env-
           (when-let* ((server (eglot-current-server)))
             (eglot-shutdown server))
           (delete-directory env-dir t)
-          (remhash (file-name-as-directory
-                    (expand-file-name (file-name-directory script-path)))
-                   eglot-python-preset--workspace-configs)
           (message "Environment removed: %s" env-dir))))))
 
 ;;;###autoload
@@ -357,15 +339,8 @@ Call this after loading Eglot."
                '((python-ts-mode python-mode) .
                  eglot-python-preset--server-contact))
   (add-hook 'project-find-functions #'eglot-python-preset--project-find)
-  ;; basedpyright needs workspace configuration via global function
-  (when (eq eglot-python-preset-lsp-server 'basedpyright)
-    (unless (eq (default-value 'eglot-workspace-configuration)
-                #'eglot-python-preset--workspace-config-fn)
-      (setq eglot-python-preset--original-workspace-configuration
-            (default-value 'eglot-workspace-configuration))
-      (setq-default eglot-workspace-configuration
-                    #'eglot-python-preset--workspace-config-fn)))
-  (add-hook 'python-base-mode-hook #'eglot-python-preset--setup-buffer t)
+  (advice-add 'eglot--workspace-configuration-plist :around
+              #'eglot-python-preset--workspace-configuration-plist-a)
   (add-hook 'python-base-mode-hook #'eglot-ensure t))
 
 (provide 'eglot-python-preset)

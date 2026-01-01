@@ -2,6 +2,12 @@
 
 This repository is for an Emacs library that configures Eglot.
 
+## Architecture
+
+For understanding the PEP-723 implementation approach (project detection, advice
+on `eglot--workspace-configuration-plist`, per-script server instances), see
+`plans/pep-723.md`.
+
 ## Planning
 
 Prefer to write plans in the `plans/` directory.
