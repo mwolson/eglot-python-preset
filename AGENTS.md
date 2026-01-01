@@ -107,3 +107,48 @@ configurations):
 
 - **`when-let` and `if-let`**: These are deprecated in favor of `when-let*` and
   `if-let*`. Always use the starred versions.
+
+## Releasing
+
+### Pre-release steps
+
+1. Fetch latest tags to ensure we have the complete history:
+
+   ```sh
+   git fetch --tags
+   ```
+
+2. Update the version in `package.json`.
+
+3. Update the version in `eglot-python-preset.el` (the `Version:` header).
+
+4. Ask the user what tag name they want. Provide examples based on the current
+   version:
+   - If current version is `0.2.0`:
+     - Minor update (new features): `0.3.0`
+     - Bugfix update (patches): `0.2.1`
+
+### Creating the release
+
+When the user provides a version (or indicates major/minor/bugfix):
+
+1. Create and push the tag:
+
+   ```sh
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+2. Create a draft GitHub release with release notes deduced from changes since
+   the prior release tag:
+
+   ```sh
+   git log <previous-tag>..HEAD --oneline
+   gh release create v<version> --draft --generate-notes
+   ```
+
+3. Tell the user to review the draft release and provide a link:
+
+   ```
+   https://github.com/mwolson/eglot-python-preset/releases
+   ```
