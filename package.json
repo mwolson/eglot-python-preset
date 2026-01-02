@@ -1,6 +1,6 @@
 {
   "name": "eglot-python-preset",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Python LSP preset for Emacs using Eglot",
   "type": "module",
   "keywords": [],
