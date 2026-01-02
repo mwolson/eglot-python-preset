@@ -67,6 +67,7 @@
 
 (require 'cl-lib)
 
+(declare-function eglot--managed-buffers "eglot")
 (declare-function eglot-current-server "eglot")
 (declare-function eglot-ensure "eglot")
 (declare-function eglot-shutdown "eglot")
@@ -320,7 +321,7 @@ After removal, run `eglot-python-preset-sync-environment' to recreate it."
           (user-error "Environment directory does not exist: %s" env-dir))
         (unless (and uv-env-dir (string-prefix-p uv-env-dir env-dir))
           (user-error "No uv-managed PEP-723 environment detected:\n\
-Run `eglot-python-preset-sync-environment' to create a managed environment" env-dir))
+Run `eglot-python-preset-sync-environment' to create a managed environment"))
         (when (yes-or-no-p (format "Delete environment %s? " env-dir))
           (when-let* ((server (eglot-current-server)))
             (eglot-shutdown server))
