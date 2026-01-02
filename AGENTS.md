@@ -123,17 +123,25 @@ configurations):
 
 ### Pre-release steps
 
-1. Fetch latest tags to ensure we have the complete history:
+1. Check for uncommitted changes:
+
+   ```sh
+   git status
+   ```
+
+   If there are uncommitted changes, offer to commit them before proceeding.
+
+2. Fetch latest tags to ensure we have the complete history:
 
    ```sh
    git fetch --tags
    ```
 
-2. Update the version in `package.json`.
+3. Update the version in `package.json`.
 
-3. Update the version in `eglot-python-preset.el` (the `Version:` header).
+4. Update the version in `eglot-python-preset.el` (the `Version:` header).
 
-4. Ask the user what tag name they want. Provide examples based on the current
+5. Ask the user what tag name they want. Provide examples based on the current
    version:
    - If current version is `0.2.0`:
      - Minor update (new features): `0.3.0`
@@ -150,16 +158,24 @@ When the user provides a version (or indicates major/minor/bugfix):
    git push origin v<version>
    ```
 
-2. Create a draft GitHub release with release notes:
+2. Examine each commit since the last tag to understand the full context:
 
    ```sh
    git log <previous-tag>..HEAD --oneline
+   ```
+
+   For each commit, run `git show <commit>` to see the full commit message and
+   diff. Commit messages may be terse or only show the first line in `--oneline`
+   output, so examining the full commit is essential for accurate release notes.
+
+3. Create a draft GitHub release:
+
+   ```sh
    gh release create v<version> --draft --title "v<version>" --generate-notes
    ```
 
-3. Enhance the release notes with more context:
-   - Review the commits since the last tag using `git show <commit>` to
-     understand the changes
+4. Enhance the release notes with more context:
+   - Use insights from examining each commit in step 2
    - Group related changes under descriptive headings (e.g., "### Refactored X",
      "### Fixed Y")
    - Use bullet lists within each section to describe the changes
@@ -172,7 +188,7 @@ When the user provides a version (or indicates major/minor/bugfix):
    - Put under-the-hood changes later (refactoring, internal improvements, docs)
    - Within each section, order by user impact (most impactful first)
 
-4. Tell the user to review the draft release and provide a link:
+5. Tell the user to review the draft release and provide a link:
 
    ```
    https://github.com/mwolson/eglot-python-preset/releases
