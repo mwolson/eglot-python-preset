@@ -6,11 +6,16 @@ pre-commit:
   parallel: true
   output: true
   commands:
+    check:
+      priority: 2
+      glob: "eglot-python-preset.el"
+      exclude: *common_excludes
+      run: mise x -- bun run check
     md-format:
       priority: 1
       glob: "*.md"
       exclude: *common_excludes
-      run: mise x -- pnpm run fix:md:file {staged_files}
+      run: mise x -- bun run fix:md:file {staged_files}
       stage_fixed: true
     yaml-format:
       priority: 1

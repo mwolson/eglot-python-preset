@@ -27,6 +27,17 @@ bun run test
 
 This executes the test suite found in `test/pep-723/test.el`.
 
+### Checking for byte-compile warnings
+
+Run the byte-compile check with:
+
+```sh
+bun run check
+```
+
+This byte-compiles `eglot-python-preset.el` and fails if there are any warnings.
+Fix all warnings before committing.
+
 ### Introspecting Elisp functions/variables from CLI
 
 To check a function's arguments or documentation without starting interactive
