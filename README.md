@@ -1,8 +1,6 @@
 # eglot-python-preset
 
-<!-- TODO: Uncomment when available on MELPA
 [![MELPA](https://melpa.org/packages/eglot-python-preset-badge.svg)](https://melpa.org/#/eglot-python-preset)
--->
 
 Configures Python LSP support for Emacs using
 [Eglot](https://github.com/joaotavora/eglot), including support for
@@ -30,11 +28,7 @@ server. It automatically handles environment synchronization for
 Choose one of the following ways to install. After that, opening Python files
 will automatically start the LSP server using Eglot.
 
-> **Note**: This package is not yet available on MELPA. For now, install
-> manually.
-
-<!-- TODO: Uncomment when available on MELPA
-### From MELPA
+### From MELPA (recommended)
 
 ```elisp
 (use-package eglot-python-preset
@@ -45,38 +39,15 @@ will automatically start the LSP server using Eglot.
   :config
   (eglot-python-preset-setup))
 ```
--->
 
-### With use-package (manual)
+### Manual installation
 
-Clone this repository:
-
-```bash
-mkdir -p ~/devel
-git clone https://github.com/mwolson/eglot-python-preset ~/devel/eglot-python-preset
-```
-
-Add to your Emacs configuration:
-
-```elisp
-(use-package eglot-python-preset
-  :load-path "~/devel/eglot-python-preset"
-  :custom
-  (eglot-python-preset-lsp-server 'ty) ; or 'basedpyright
-  :config
-  (eglot-python-preset-setup))
-```
-
-### With require
-
-Clone this repository:
+Clone this repository and add to your Emacs configuration:
 
 ```bash
 mkdir -p ~/devel
 git clone https://github.com/mwolson/eglot-python-preset ~/devel/eglot-python-preset
 ```
-
-Add to your Emacs configuration:
 
 ```elisp
 (add-to-list 'load-path (expand-file-name "~/devel/eglot-python-preset"))
@@ -164,7 +135,8 @@ Example to disable auto-import completions and set type checking mode:
 ```elisp
 ;; With use-package
 (use-package eglot-python-preset
-  :load-path "~/devel/eglot-python-preset"
+  :ensure t
+  :after eglot
   :custom
   (eglot-python-preset-lsp-server 'basedpyright)
   (eglot-workspace-configuration
