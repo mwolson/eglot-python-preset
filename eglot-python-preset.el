@@ -227,6 +227,13 @@ Includes initializationOptions for ty with PEP-723 scripts."
         `(,@command :initializationOptions ,init-options)
       command)))
 
+(defun eglot-python-preset--in-indirect-md-buffer-p ()
+  "Return non-nil if buffer is an indirect buffer from a markdown buffer."
+  (when-let* ((buf (buffer-base-buffer))
+              ((buffer-live-p buf)))
+    (with-current-buffer buf
+      (derived-mode-p 'markdown-mode))))
+
 (defun eglot-python-preset--python-project-root-p (dir)
   "Return non-nil if DIR contains a Python project marker file."
   (seq-some (lambda (file)
@@ -240,6 +247,8 @@ For PEP-723 scripts, returns (python-script . SCRIPT-PATH) so each script
 gets its own eglot server instance.
 Otherwise, returns (python-project . ROOT) if DIR is inside a Python project."
   (cond
+   ((eglot-python-preset--in-indirect-md-buffer-p)
+    nil)
    ((and (derived-mode-p 'python-base-mode)
          (eglot-python-preset-has-metadata-p))
     (cons 'python-script (buffer-file-name)))
