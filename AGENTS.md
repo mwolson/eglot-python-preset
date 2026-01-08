@@ -137,11 +137,11 @@ configurations):
    git fetch --tags
    ```
 
-3. Update the version in `package.json`.
+3. Update the version in `package.json` and `eglot-python-preset.el` (the
+   `Version:` header), then commit the version bump separately from other
+   changes with message `chore: bump version to <version>`.
 
-4. Update the version in `eglot-python-preset.el` (the `Version:` header).
-
-5. Ask the user what tag name they want. Provide examples based on the current
+4. Ask the user what tag name they want. Provide examples based on the current
    version:
    - If current version is `0.2.0`:
      - Minor update (new features): `0.3.0`
