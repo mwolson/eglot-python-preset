@@ -19,6 +19,17 @@
     (insert "#!/bin/bash\nexit 0\n"))
   (set-file-modes path #o755))
 
+(defun my-pep723-delete-script-env-if-present (script-path)
+  "Delete the uv-managed script environment for SCRIPT-PATH, if present."
+  (let* ((python-path (eglot-python-preset-get-python-path script-path))
+         (env-dir (eglot-python-preset--python-env-dir python-path))
+         (uv-env-dir (eglot-python-preset--uv-env-dir)))
+    (when (and env-dir
+               uv-env-dir
+               (file-directory-p env-dir)
+               (string-prefix-p uv-env-dir env-dir))
+      (delete-directory env-dir t))))
+
 (defun my-pep723-run-tests ()
   "Run PEP-723 tests and report results."
 
@@ -256,11 +267,7 @@
       (princ "SKIP (uv not found)\n")
     (with-current-buffer (find-file-noselect my-pep723-test-script-1)
       ;; Remove any existing environment first to ensure clean state
-      (let ((python-path (eglot-python-preset-get-python-path my-pep723-test-script-1)))
-        (when python-path
-          (let ((env-dir (eglot-python-preset--python-env-dir python-path)))
-            (when (and env-dir (file-directory-p env-dir))
-              (delete-directory env-dir t)))))
+      (my-pep723-delete-script-env-if-present my-pep723-test-script-1)
       ;; Now sync to create fresh environment
       (let* ((script-path (buffer-file-name))
              (default-directory (file-name-directory script-path))
@@ -273,8 +280,12 @@
         (unless python-path
           (princ "FAIL (no python path after sync)\n")
           (kill-emacs 1))
-        (let ((env-dir (eglot-python-preset--python-env-dir python-path)))
-          (unless (and env-dir (file-directory-p env-dir))
+        (let* ((env-dir (eglot-python-preset--python-env-dir python-path))
+               (uv-env-dir (eglot-python-preset--uv-env-dir)))
+          (unless (and env-dir
+                       uv-env-dir
+                       (file-directory-p env-dir)
+                       (string-prefix-p uv-env-dir env-dir))
             (princ "FAIL (environment directory not created)\n")
             (kill-emacs 1))
           ;; Now remove the environment
