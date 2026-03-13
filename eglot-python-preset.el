@@ -151,6 +151,31 @@ any supported special handling."
   :type '(repeat string)
   :group 'eglot-python-preset)
 
+(defun eglot-python-preset--lsp-server-safe-p (value)
+  "Return non-nil if VALUE is a safe `eglot-python-preset-lsp-server' value."
+  (memq value '(ty basedpyright rass)))
+
+(put 'eglot-python-preset-lsp-server 'safe-local-variable
+     #'eglot-python-preset--lsp-server-safe-p)
+
+(defun eglot-python-preset--rass-tools-safe-p (value)
+  "Return non-nil if VALUE is a safe `eglot-python-preset-rass-tools' value.
+Only lists of known symbols are considered safe.  Literal command vectors
+are excluded because they could execute arbitrary programs."
+  (and (listp value)
+       (seq-every-p (lambda (item) (memq item '(basedpyright ruff ty))) value)))
+
+(put 'eglot-python-preset-rass-tools 'safe-local-variable
+     #'eglot-python-preset--rass-tools-safe-p)
+
+(defun eglot-python-preset--project-markers-safe-p (value)
+  "Return non-nil if VALUE is a safe `eglot-python-preset-python-project-markers'."
+  (and (listp value)
+       (seq-every-p #'stringp value)))
+
+(put 'eglot-python-preset-python-project-markers 'safe-local-variable
+     #'eglot-python-preset--project-markers-safe-p)
+
 (defun eglot-python-preset-has-metadata-p ()
   "Return non-nil if current buffer has PEP-723 script metadata."
   (let ((case-fold-search nil))

@@ -839,6 +839,29 @@
        (delete-file python-file)))
    :type 'error))
 
+(ert-deftest eglot-python-preset-lsp-server-safe-local-variable ()
+  (should (eglot-python-preset--lsp-server-safe-p 'ty))
+  (should (eglot-python-preset--lsp-server-safe-p 'basedpyright))
+  (should (eglot-python-preset--lsp-server-safe-p 'rass))
+  (should-not (eglot-python-preset--lsp-server-safe-p 'unknown))
+  (should-not (eglot-python-preset--lsp-server-safe-p "ty"))
+  (should-not (eglot-python-preset--lsp-server-safe-p nil)))
+
+(ert-deftest eglot-python-preset-rass-tools-safe-local-variable ()
+  (should (eglot-python-preset--rass-tools-safe-p '(ty ruff)))
+  (should (eglot-python-preset--rass-tools-safe-p '(ty ruff basedpyright)))
+  (should (eglot-python-preset--rass-tools-safe-p '()))
+  (should-not (eglot-python-preset--rass-tools-safe-p '(ty ["ruff" "server"])))
+  (should-not (eglot-python-preset--rass-tools-safe-p '(unknown)))
+  (should-not (eglot-python-preset--rass-tools-safe-p "ty")))
+
+(ert-deftest eglot-python-preset-project-markers-safe-local-variable ()
+  (should (eglot-python-preset--project-markers-safe-p
+           '("pyproject.toml" "requirements.txt")))
+  (should (eglot-python-preset--project-markers-safe-p '()))
+  (should-not (eglot-python-preset--project-markers-safe-p '(pyproject.toml)))
+  (should-not (eglot-python-preset--project-markers-safe-p "pyproject.toml")))
+
 (ert-deftest eglot-python-preset-setup-registers-hooks-and-contact ()
   (let ((eglot-server-programs nil)
         (project-find-functions nil)

@@ -219,6 +219,49 @@ Example to disable auto-import completions and set type checking mode:
 (eglot-python-preset-setup)
 ```
 
+### Per-project Configuration
+
+Some projects may need different settings than your global defaults. There are
+two approaches, depending on whether you want the settings stored in the project
+itself.
+
+#### Using `.dir-locals.el` (project-local file)
+
+Create a `.dir-locals.el` file in the project root. The following variables are
+recognized as safe with appropriate values, so Emacs will apply them without
+prompting:
+
+```elisp
+;;; .dir-locals.el
+((python-ts-mode
+  . ((eglot-python-preset-lsp-server . basedpyright)
+     (eglot-python-preset-rass-tools . (ty ruff)))))
+```
+
+`eglot-python-preset-lsp-server` accepts `ty`, `basedpyright`, or `rass`.
+`eglot-python-preset-rass-tools` accepts lists of known tool symbols (`ty`,
+`ruff`, `basedpyright`). `eglot-python-preset-python-project-markers` accepts
+lists of filename strings.
+
+#### Using `dir-locals-set-directory-class` (init file, no project changes)
+
+If you prefer not to add Emacs-specific files to the project, configure
+per-directory settings from your init file instead:
+
+```elisp
+(dir-locals-set-class-variables
+ 'my-project-x
+ '((python-ts-mode
+    . ((eglot-python-preset-lsp-server . basedpyright)))))
+
+(dir-locals-set-directory-class
+ (expand-file-name "~/devel/project-x") 'my-project-x)
+```
+
+This uses the built-in Emacs directory-class mechanism. The settings take effect
+whenever you visit files under that directory, without any files added to the
+project.
+
 ## Troubleshooting
 
 - Eglot publishes diagnostics through Flymake. If you are using Flycheck, you
