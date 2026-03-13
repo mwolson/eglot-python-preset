@@ -24,8 +24,8 @@ server frontend. It automatically handles environment synchronization for
   - [basedpyright](https://github.com/DetachHead/basedpyright) - fork of pyright
     with additional features. It can be installed globally or in a project-root
     `.venv`.
-  - [rassumfrassum](https://github.com/joaotavora/rassumfrassum) - optional
-    stdio multiplexer for combining multiple Python tools.
+  - [rassumfrassum](https://github.com/joaotavora/rassumfrassum) (>= v0.3.3) -
+    optional stdio multiplexer for combining multiple Python tools.
 
 ## Installation
 
