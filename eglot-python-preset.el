@@ -95,6 +95,21 @@
   :type 'string
   :group 'eglot-python-preset)
 
+;;;###autoload
+(defcustom eglot-python-preset-rass-command nil
+  "Exact command vector to run when `eglot-python-preset-lsp-server' is `rass'.
+
+When non-nil, this command is used verbatim and no generated preset is written.
+The value must include the `rass` executable and any preset or arguments that
+should be passed to it."
+  :type '(choice
+          (const :tag "Use generated preset" nil)
+          (restricted-sexp
+           :tag "Exact command vector"
+           :value ["rass" "python"]
+           :match-alternatives (eglot-python-preset--rass-command-vector-p)))
+  :group 'eglot-python-preset)
+
 (defcustom eglot-python-preset-rass-max-contextual-presets 50
   "Maximum number of contextual generated `rass` presets to keep.
 
@@ -571,9 +586,11 @@ Includes initializationOptions for ty with PEP-723 scripts."
                            "basedpyright-langserver")
                           "--stdio"))
                    ('rass
-                    (list (eglot-python-preset--resolve-executable
-                           eglot-python-preset-rass-program)
-                          (eglot-python-preset--rass-preset-path)))
+                    (if eglot-python-preset-rass-command
+                        (append eglot-python-preset-rass-command nil)
+                      (list (eglot-python-preset--resolve-executable
+                             eglot-python-preset-rass-program)
+                            (eglot-python-preset--rass-preset-path))))
                    ('ty (list (eglot-python-preset--resolve-executable "ty")
                               "server"))))
         (init-options (eglot-python-preset--init-options)))

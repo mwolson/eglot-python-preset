@@ -110,6 +110,13 @@
    :match
    value))
 
+(defun my-test-rass-command-type-matches-p (value)
+  "Return non-nil if VALUE matches the custom type for exact `rass` command."
+  (widget-apply
+   (widget-convert (get 'eglot-python-preset-rass-command 'custom-type))
+   :match
+   value))
+
 (defun my-test-rass-tools-vector-widget ()
   "Return the literal command vector widget from the `rass` tools custom type."
   (let* ((type (widget-convert (get 'eglot-python-preset-rass-tools 'custom-type)))
@@ -118,6 +125,12 @@
      (lambda (widget)
        (equal "Command vector" (widget-get widget :tag)))
      (widget-get choice :args))))
+
+(defun my-test-rass-command-widget ()
+  "Return the exact `rass` command vector widget from the custom type."
+  (let* ((type (widget-convert (get 'eglot-python-preset-rass-command 'custom-type)))
+         (choice (car (last (widget-get type :args)))))
+    choice))
 
 (defun my-test-delete-script-env-if-present (script-path)
   "Delete the uv-managed script environment for SCRIPT-PATH, if present."
@@ -531,6 +544,21 @@
       (delete-file python-file-1)
       (delete-file python-file-2))))
 
+(ert-deftest eglot-python-preset-rass-command-override-bypasses-generated-preset ()
+  (let ((python-file (make-temp-file "rass-command" nil ".py" "print('hello')\n")))
+    (unwind-protect
+        (my-test-with-file-buffer
+         python-file
+         (lambda ()
+           (let ((eglot-python-preset-lsp-server 'rass)
+                 (eglot-python-preset-rass-command ["rass" "python"]))
+             (cl-letf (((symbol-function 'eglot-python-preset--rass-preset-path)
+                        (lambda ()
+                          (error "generated preset should not be used"))))
+               (should (equal '("rass" "python")
+                              (eglot-python-preset--server-contact nil)))))))
+      (delete-file python-file))))
+
 (ert-deftest eglot-python-preset-rass-uses-contextual-preset-for-local-venv-tools ()
   (let ((project-dir-1 (make-temp-file "rass-local-a" t))
         (project-dir-2 (make-temp-file "rass-local-b" t)))
@@ -770,6 +798,20 @@
 (ert-deftest eglot-python-preset-rass-tools-custom-type-accepts-symbols-and-vectors ()
   (should (my-test-rass-tools-type-matches-p '(ty ruff)))
   (should (my-test-rass-tools-type-matches-p '(ty ["custom-lsp" "--stdio"]))))
+
+(ert-deftest eglot-python-preset-rass-command-custom-type-accepts-nil-and-vectors ()
+  (should (my-test-rass-command-type-matches-p nil))
+  (should (my-test-rass-command-type-matches-p ["rass" "python"])))
+
+(ert-deftest eglot-python-preset-rass-command-custom-type-rejects-bad-vector ()
+  (should-not (my-test-rass-command-type-matches-p ["rass" 1])))
+
+(ert-deftest eglot-python-preset-rass-command-widget-default-is-valid ()
+  (let ((widget (my-test-rass-command-widget)))
+    (should widget)
+    (should (equal "[\"rass\" \"python\"]" (widget-get widget :value)))
+    (should (widget-apply widget :match ["rass" "/tmp/preset.py"]))
+    (should-not (widget-apply widget :match ["rass" 1]))))
 
 (ert-deftest eglot-python-preset-rass-tools-vector-widget-default-is-valid ()
   (let ((widget (my-test-rass-tools-vector-widget)))

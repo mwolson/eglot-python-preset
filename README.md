@@ -147,6 +147,26 @@ configuration files:
           ["ruff" "--isolated" "server"]))
 ```
 
+### `eglot-python-preset-rass-command`
+
+If you want to bypass the generated preset entirely, set an exact `rass` command
+vector. When this is non-nil, it is used verbatim and
+`eglot-python-preset-rass-tools` is ignored:
+
+```elisp
+(setopt eglot-python-preset-rass-command ["rass" "python"])
+```
+
+Or with a custom preset path:
+
+```elisp
+(setopt eglot-python-preset-rass-command
+        ["rass" "/path/to/custom-preset.py"])
+```
+
+Note that this will remove support for PEP-723 scripts unless the preset is
+updated to handle it.
+
 ### `eglot-python-preset-python-project-markers`
 
 Files that indicate a Python project root:
@@ -206,10 +226,10 @@ Example to disable auto-import completions and set type checking mode:
 - If `ty` or `basedpyright-langserver` is installed only in a project-local
   `.venv`, make sure you are using v0.3.0 or later so this package can prefer
   that executable automatically.
-- If you use the `rass` backend, the package generates a preset under your
-  Emacs directory and updates it as needed. Context-free presets are reused
-  across buffers, while PEP-723 and project-local `.venv` cases keep separate
-  generated files when the preset content depends on that local context.
+- If you use the `rass` backend, the package generates a preset under your Emacs
+  directory and updates it as needed. Context-free presets are reused across
+  buffers, while PEP-723 and project-local `.venv` cases keep separate generated
+  files when the preset content depends on that local context.
 
 ## Notes
 
