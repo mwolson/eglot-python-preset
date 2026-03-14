@@ -16,7 +16,17 @@
     (package-install 'package-lint))
   (require 'package-lint)
   (find-file file)
-  (let ((issues (package-lint-buffer)))
+  (let* ((allowed-extern '("eglot-lsp-context"))
+         (issues
+          (seq-remove
+           (lambda (issue)
+             (pcase-let ((`(,_line ,_column ,_level ,message) issue))
+               (seq-some (lambda (sym)
+                           (string-match-p
+                            (regexp-quote (format "\"%s\"" sym))
+                            message))
+                         allowed-extern)))
+           (package-lint-buffer))))
     (if issues
         (progn
           (dolist (issue issues)

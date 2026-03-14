@@ -642,7 +642,7 @@ Includes initializationOptions for ty with PEP-723 scripts."
               (file-exists-p (expand-file-name file dir)))
             eglot-python-preset-python-project-markers))
 
-(defvar eglot-lsp-context nil)
+(defvar eglot-lsp-context)
 
 (defun eglot-python-preset--project-find (dir)
   "Project detection for Python files.

@@ -11,6 +11,7 @@
 (require 'wid-edit)
 (require 'eglot-python-preset)
 
+(defvar eglot-lsp-context nil)
 (defvar eglot-server-programs nil)
 (defvar eglot-workspace-configuration nil)
 (defvar project-find-functions nil)
