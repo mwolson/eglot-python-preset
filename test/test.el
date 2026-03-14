@@ -6,6 +6,7 @@
 (require 'cl-lib)
 (require 'ert)
 (require 'json)
+(require 'project)
 (require 'python)
 (require 'wid-edit)
 (require 'eglot-python-preset)
@@ -25,6 +26,8 @@
 
 (defvar my-test-run-live-tests nil)
 (defvar my-test-test-dir (file-name-directory load-file-name))
+(defvar my-test-fixtures-dir
+  (expand-file-name "fixtures/" my-test-test-dir))
 (defvar my-test-argv-lsp-server
   (expand-file-name "argv-lsp-server.py" my-test-test-dir))
 (defvar my-test-live-rass-client
@@ -32,9 +35,9 @@
 (defvar my-test-rass-template-unit
   (expand-file-name "rass-template-unit.py" my-test-test-dir))
 (defvar my-test-test-script-1
-  (expand-file-name "pep-723-example-1.py" my-test-test-dir))
+  (expand-file-name "pep-723-example-1.py" my-test-fixtures-dir))
 (defvar my-test-test-script-2
-  (expand-file-name "pep-723-example-2.py" my-test-test-dir))
+  (expand-file-name "pep-723-example-2.py" my-test-fixtures-dir))
 
 (defun my-test-write-executable (path)
   "Create an executable file at PATH."
@@ -76,6 +79,39 @@
     (insert "# dependencies = []\n")
     (insert "# ///\n\n")
     (insert (or body "print('hello')\n"))))
+
+(defun my-test-fixture-content (name)
+  "Return the contents of fixture file NAME."
+  (with-temp-buffer
+    (insert-file-contents (expand-file-name name my-test-fixtures-dir))
+    (buffer-string)))
+
+(defun my-test-copy-fixture (name target-dir &optional target-name)
+  "Copy fixture NAME into TARGET-DIR.  Return the new path.
+If TARGET-NAME is non-nil, rename the file."
+  (let ((src (expand-file-name name my-test-fixtures-dir))
+        (dst (expand-file-name (or target-name name) target-dir)))
+    (copy-file src dst t)
+    dst))
+
+(defun my-test-copy-fixture-dir (name target-dir)
+  "Copy fixture subdirectory NAME into TARGET-DIR.  Return the new path."
+  (let ((src (expand-file-name name my-test-fixtures-dir))
+        (dst (expand-file-name name target-dir)))
+    (copy-directory src dst nil t t)
+    dst))
+
+(defun my-test--with-tmp-dir (fn)
+  "Call FN with a temporary directory, cleaned up afterward."
+  (let ((tmp (make-temp-file "eglot-py-test-" t)))
+    (unwind-protect
+        (funcall fn tmp)
+      (delete-directory tmp t))))
+
+(defmacro my-test-with-tmp-dir (var &rest body)
+  "Bind VAR to a temporary directory, evaluate BODY, then clean up."
+  (declare (indent 1))
+  `(my-test--with-tmp-dir (lambda (,var) ,@body)))
 
 (defun my-test-with-file-buffer (file fn)
   "Visit FILE, call FN in that buffer, and kill the buffer afterward."
@@ -861,6 +897,93 @@
   (should (eglot-python-preset--project-markers-safe-p '()))
   (should-not (eglot-python-preset--project-markers-safe-p '(pyproject.toml)))
   (should-not (eglot-python-preset--project-markers-safe-p "pyproject.toml")))
+
+(ert-deftest eglot-python-preset-project-find-with-lsp-context ()
+  "Project find returns python-project when eglot-lsp-context is set."
+  (my-test-with-tmp-dir tmp-dir
+    (let* ((project-dir (expand-file-name "myproject/" tmp-dir))
+           (src-dir (expand-file-name "src/" project-dir))
+           (eglot-lsp-context t))
+      (make-directory src-dir t)
+      (with-temp-file (expand-file-name "pyproject.toml" project-dir)
+        (insert "[project]\nname = \"test\"\n"))
+      (let ((result (eglot-python-preset--project-find src-dir)))
+        (should result)
+        (should (eq (car result) 'python-project))
+        (should (string= (cdr result)
+                          (file-name-as-directory project-dir)))))))
+
+(ert-deftest eglot-python-preset-project-find-without-lsp-context ()
+  "Project find returns nil when eglot-lsp-context is not set."
+  (my-test-with-tmp-dir tmp-dir
+    (let* ((project-dir (expand-file-name "myproject/" tmp-dir))
+           (src-dir (expand-file-name "src/" project-dir))
+           (eglot-lsp-context nil))
+      (make-directory src-dir t)
+      (with-temp-file (expand-file-name "pyproject.toml" project-dir)
+        (insert "[project]\nname = \"test\"\n"))
+      (should-not (eglot-python-preset--project-find src-dir)))))
+
+(ert-deftest eglot-python-preset-project-root-returns-correct-dir ()
+  "Project root returns the correct directory."
+  (my-test-with-tmp-dir tmp-dir
+    (let* ((project-dir (expand-file-name "myproject/" tmp-dir))
+           (src-file (expand-file-name "src/main.py" project-dir)))
+      (make-directory (file-name-directory src-file) t)
+      (with-temp-file (expand-file-name "pyproject.toml" project-dir)
+        (insert "[project]\nname = \"test\"\n"))
+      (with-temp-file src-file (insert ""))
+      (with-current-buffer (find-file-noselect src-file)
+        (unwind-protect
+            (should (string= (eglot-python-preset--project-root)
+                             (file-name-as-directory project-dir)))
+          (kill-buffer))))))
+
+(ert-deftest eglot-python-preset-monorepo-project-boundary ()
+  "In a monorepo, project-find-file escapes the LSP project boundary.
+With eglot-lsp-context, --project-find scopes to the Python project.
+Without it, project-try-vc returns the git root, and project-files
+respects .gitignore (excludes dist/) while including files outside
+the Python project boundary."
+  (my-test-with-tmp-dir tmp-dir
+    (let* ((monorepo-dir (my-test-copy-fixture-dir "monorepo" tmp-dir))
+           (frontend-dir (expand-file-name "frontend/" monorepo-dir))
+           (frontend-src (expand-file-name "src/" frontend-dir))
+           (frontend-dist (expand-file-name "dist/" frontend-dir))
+           (default-directory monorepo-dir))
+      ;; Initialize git repo and commit the fixture files
+      (call-process "git" nil nil nil "init" "-q" monorepo-dir)
+      (call-process "git" nil nil nil "-C" monorepo-dir "add" ".")
+      (call-process "git" nil nil nil "-C" monorepo-dir
+                    "-c" "user.name=Test" "-c" "user.email=test@test"
+                    "commit" "-q" "-m" "init")
+      ;; Create dist/ file after commit (gitignored build output)
+      (make-directory frontend-dist t)
+      (with-temp-file (expand-file-name "output.py" frontend-dist)
+        (insert "compiled output\n"))
+      ;; 1. With eglot-lsp-context, project-find scopes to frontend
+      (let ((eglot-lsp-context t))
+        (let ((result (eglot-python-preset--project-find frontend-src)))
+          (should result)
+          (should (eq (car result) 'python-project))
+          (should (string= (cdr result)
+                           (file-name-as-directory frontend-dir)))))
+      ;; 2. Without eglot-lsp-context, project-find returns nil
+      (let ((eglot-lsp-context nil))
+        (should-not (eglot-python-preset--project-find frontend-src)))
+      ;; 3. project-try-vc finds the git root (monorepo root)
+      (let ((vc-project (project-try-vc frontend-src)))
+        (should vc-project)
+        (should (string= (file-name-as-directory monorepo-dir)
+                          (project-root vc-project)))
+        ;; 4. project-files includes backend but excludes dist/
+        (let ((files (project-files vc-project)))
+          (should (cl-some (lambda (f) (string-suffix-p "backend/app.py" f))
+                           files))
+          (should (cl-some (lambda (f) (string-suffix-p "frontend/src/main.py" f))
+                           files))
+          (should-not (cl-some (lambda (f) (string-match-p "dist/" f))
+                               files)))))))
 
 (ert-deftest eglot-python-preset-setup-registers-hooks-and-contact ()
   (let ((eglot-server-programs nil)

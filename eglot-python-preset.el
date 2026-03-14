@@ -243,11 +243,17 @@ Given a path like /path/to/env/bin/python3, return /path/to/env/."
         (file-name-directory (directory-file-name bin-dir))))))
 
 (defun eglot-python-preset--project-root ()
-  "Return the current buffer's project root."
-  (when-let* ((file (buffer-file-name))
-              (project (eglot-python-preset--project-find
-                        (file-name-directory file))))
-    (project-root project)))
+  "Return the current buffer's project root.
+For PEP-723 scripts without project markers, returns the script's
+directory so that local .venv resolution still works."
+  (when-let* ((file (buffer-file-name)))
+    (or (when-let* ((root (locate-dominating-file
+                           (file-name-directory file)
+                           #'eglot-python-preset--python-project-root-p)))
+          (file-name-as-directory root))
+        (when (and (derived-mode-p 'python-base-mode)
+                   (eglot-python-preset-has-metadata-p))
+          (file-name-directory file)))))
 
 (defun eglot-python-preset--venv-bin-dirs ()
   "Return candidate local virtualenv executable directories."
@@ -636,21 +642,27 @@ Includes initializationOptions for ty with PEP-723 scripts."
               (file-exists-p (expand-file-name file dir)))
             eglot-python-preset-python-project-markers))
 
+(defvar eglot-lsp-context nil)
+
 (defun eglot-python-preset--project-find (dir)
   "Project detection for Python files.
 
 For PEP-723 scripts, returns (python-script . SCRIPT-PATH) so each script
 gets its own eglot server instance.
-Otherwise, returns (python-project . ROOT) if DIR is inside a Python project."
-  (cond
-   ((eglot-python-preset--in-indirect-md-buffer-p)
-    nil)
-   ((and (derived-mode-p 'python-base-mode)
-         (eglot-python-preset-has-metadata-p))
-    (cons 'python-script (buffer-file-name)))
-   ((when-let* ((root (locate-dominating-file
-                       dir #'eglot-python-preset--python-project-root-p)))
-      (cons 'python-project root)))))
+Otherwise, returns (python-project . ROOT) if DIR is inside a Python project.
+Only activates when `eglot-lsp-context' is non-nil so that
+`project-find-file' and other project.el commands fall through to
+the VC backend, which respects .gitignore."
+  (when (bound-and-true-p eglot-lsp-context)
+    (cond
+     ((eglot-python-preset--in-indirect-md-buffer-p)
+      nil)
+     ((and (derived-mode-p 'python-base-mode)
+           (eglot-python-preset-has-metadata-p))
+      (cons 'python-script (buffer-file-name)))
+     ((when-let* ((root (locate-dominating-file
+                         dir #'eglot-python-preset--python-project-root-p)))
+        (cons 'python-project root))))))
 
 (cl-defmethod project-root ((project (head python-script)))
   "Return directory containing the script for PROJECT."
