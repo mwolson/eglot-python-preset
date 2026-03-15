@@ -184,21 +184,62 @@ If TARGET-NAME is non-nil, rename the file."
   "Return non-nil when opt-in live tests should run."
   my-test-run-live-tests)
 
-(defun my-test-run-live-rass-client (preset-path python-file)
-  "Run the Python live `rass` client for PRESET-PATH and PYTHON-FILE."
-  (with-temp-buffer
-    (let ((status (call-process "python3" nil (current-buffer) nil
-                                my-test-live-rass-client
-                                preset-path
-                                python-file)))
-      (unless (zerop status)
-        (error "Live rass client failed: %s" (string-trim (buffer-string))))
-      (goto-char (point-min))
-      (json-parse-string (buffer-string)
-                         :object-type 'alist
-                         :array-type 'list
-                         :null-object nil
-                         :false-object nil))))
+(defun my-test--run-rass-session (preset-path file-specs root-dir
+                                              &optional timeout)
+  "Run rass-live-client with multiple files and return parsed result.
+PRESET-PATH is the rass preset.  FILE-SPECS is a list of
+\(FILE-PATH . LANGUAGE-ID) cons cells.  ROOT-DIR is the workspace
+root.  TIMEOUT defaults to 8 seconds."
+  (let* ((timeout (or timeout 8))
+         (file-args (mapconcat
+                     (lambda (spec)
+                       (format "%s:%s"
+                               (shell-quote-argument (car spec))
+                               (shell-quote-argument (cdr spec))))
+                     file-specs " "))
+         (output (shell-command-to-string
+                  (format "python3 %s %s %s --root %s --timeout %s"
+                          (shell-quote-argument my-test-live-rass-client)
+                          (shell-quote-argument preset-path)
+                          file-args
+                          (shell-quote-argument root-dir)
+                          timeout))))
+    (json-parse-string output :object-type 'alist)))
+
+(defun my-test--session-file-result (session-result file-path)
+  "Extract per-file diagnostics from SESSION-RESULT for FILE-PATH."
+  (let* ((files (alist-get 'files session-result))
+         (uri (concat "file://" (expand-file-name file-path))))
+    (alist-get (intern uri) files)))
+
+(defun my-test--assert-file-diagnostics (session-result file-path
+                                                        expected-codes
+                                                        &optional expected-sources)
+  "Assert FILE-PATH in SESSION-RESULT has exactly EXPECTED-CODES.
+SESSION-RESULT is the parsed multi-file result.  EXPECTED-CODES is
+compared as sorted deduplicated sets.  EXPECTED-SOURCES, when
+non-nil, lists source patterns that must each match at least one
+actual source."
+  (should (alist-get 'initialized session-result))
+  (let* ((file-data (my-test--session-file-result session-result file-path))
+         (actual-codes (sort (delete-dups
+                              (append (alist-get 'diagnosticCodes file-data) nil))
+                             #'string<))
+         (expected (sort (copy-sequence expected-codes) #'string<)))
+    (should (equal actual-codes expected))
+    (dolist (src-pat expected-sources)
+      (should (cl-some (lambda (s) (string-match-p src-pat s))
+                       (append (alist-get 'diagnosticSources file-data) nil))))))
+
+(defun my-test--setup-fixture-dir (fixture-subdir tmp-dir)
+  "Copy FIXTURE-SUBDIR contents into TMP-DIR."
+  (let ((src-dir (expand-file-name fixture-subdir my-test-fixtures-dir)))
+    (dolist (file (directory-files src-dir nil "\\`[^.]"))
+      (let ((src (expand-file-name file src-dir))
+            (dst (expand-file-name file tmp-dir)))
+        (if (file-directory-p src)
+            (copy-directory src dst nil t t)
+          (copy-file src dst t))))))
 
 (defun my-test-run-live-fake-ruff-client (tools)
   "Run the live `rass` client against a fake local Ruff using TOOLS."
@@ -219,7 +260,10 @@ If TARGET-NAME is non-nil, rename the file."
           (my-test-write-python-launcher
            ruff-path my-test-argv-lsp-server '("--server-name" "ruff"))
           (setq preset-path (my-test-rass-preset-path python-file tools))
-          (my-test-run-live-rass-client preset-path python-file))
+          (my-test--run-rass-session
+           preset-path
+           `((,python-file . "python"))
+           project-dir))
       (delete-directory project-dir t))))
 
 (defun my-test-run-live-fake-ty-ruff-client (tools)
@@ -240,53 +284,30 @@ If TARGET-NAME is non-nil, rename the file."
           (cl-letf (((symbol-function 'eglot-python-preset-get-python-path)
                      (lambda (_file-path) "/tmp/fake-env/bin/python3")))
             (setq preset-path (my-test-rass-preset-path python-file tools)))
-          (my-test-run-live-rass-client preset-path python-file))
-      (delete-directory project-dir t))))
-
-(defun my-test-run-live-real-rass-client (tools mode)
-  "Run live `rass` integration for TOOLS in MODE."
-  (let ((project-dir (make-temp-file "rass-real" t)))
-    (unwind-protect
-        (pcase mode
-          ('ruff
-           (let* ((python-file (expand-file-name "main.py" project-dir))
-                  (pyproject-file (expand-file-name "pyproject.toml" project-dir))
-                  (preset-path nil))
-             (with-temp-file pyproject-file
-               (insert "[project]\n")
-               (insert "name = \"ruff-smoke\"\n")
-               (insert "version = \"0.0.0\"\n"))
-             (with-temp-file python-file
-               (insert "import os\n"))
-             (setq preset-path (my-test-rass-preset-path python-file tools))
-             (my-test-run-live-rass-client preset-path python-file)))
-          ((or 'ty 'basedpyright)
-           (let* ((python-file (expand-file-name "script.py" project-dir))
-                  (preset-path nil)
-                  (default-directory project-dir))
-             (my-test-write-script-metadata-file python-file "import requests\n")
-             (unless (zerop (call-process "uv" nil nil nil "sync" "--script" python-file))
-               (error "uv sync --script failed for %s" python-file))
-             (setq preset-path (my-test-rass-preset-path python-file tools))
-             (my-test-run-live-rass-client preset-path python-file))))
+          (my-test--run-rass-session
+           preset-path
+           `((,python-file . "python"))
+           project-dir))
       (delete-directory project-dir t))))
 
 (defun my-test-assert-diagnostics (result expected-codes
                                           &optional expected-sources)
-  "Assert RESULT has exactly EXPECTED-CODES diagnostics.
-EXPECTED-CODES is compared as sorted deduplicated sets against the
-actual diagnostic codes.  Fails if there are unexpected or missing
-codes.  EXPECTED-SOURCES, when non-nil, lists source patterns that
-must each match at least one actual source."
-  (let-alist result
-    (should .initialized)
-    (let ((actual (sort (delete-dups (append .diagnosticCodes nil))
+  "Assert single-file RESULT has exactly EXPECTED-CODES diagnostics.
+RESULT is a multi-file session result with one file entry.
+EXPECTED-CODES is compared as sorted deduplicated sets.
+EXPECTED-SOURCES, when non-nil, lists source patterns that must
+each match at least one actual source."
+  (should (alist-get 'initialized result))
+  (let* ((files (alist-get 'files result))
+         (file-data (cdar files)))
+    (let ((actual (sort (delete-dups
+                         (append (alist-get 'diagnosticCodes file-data) nil))
                         #'string<))
           (expected (sort (copy-sequence expected-codes) #'string<)))
       (should (equal actual expected)))
     (dolist (src-pat expected-sources)
       (should (cl-some (lambda (s) (string-match-p src-pat s))
-                       (append .diagnosticSources nil))))))
+                       (append (alist-get 'diagnosticSources file-data) nil))))))
 
 (defun my-test-run-rass-template-unit (preset-path)
   "Run the Python template unit helper against PRESET-PATH."
@@ -1046,8 +1067,18 @@ the Python project boundary."
   (skip-unless (executable-find "python3"))
   (skip-unless (executable-find "rass"))
   (skip-unless (executable-find "ruff"))
-  (let ((result (my-test-run-live-real-rass-client '(ruff) 'ruff)))
-    (my-test-assert-diagnostics result '("F401") '("ruff"))))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ruff" tmp-dir)
+    (let* ((unused (expand-file-name "unused-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path unused '(ruff)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unused . "python")
+                      (,valid . "python"))
+                    tmp-dir)))
+      (my-test--assert-file-diagnostics result unused '("F401") '("ruff"))
+      (my-test--assert-file-diagnostics result valid '()))))
 
 (ert-deftest eglot-python-preset-rass-live-real-ty-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1055,10 +1086,28 @@ the Python project boundary."
   (skip-unless (executable-find "rass"))
   (skip-unless (executable-find "ty"))
   (skip-unless (executable-find "uv"))
-  (let ((result (my-test-run-live-real-rass-client '(ty) 'ty)))
-    (should (member "ty" (alist-get 'workspaceConfigSections result)))
-    (my-test-assert-diagnostics
-     result '("unresolved-import") '("ty"))))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ty" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (default-directory tmp-dir))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" unresolved))
+        (error "uv sync --script failed for %s" unresolved))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" valid))
+        (error "uv sync --script failed for %s" valid))
+      (let* ((preset-path (my-test-rass-preset-path unresolved '(ty)))
+             (result (my-test--run-rass-session
+                      preset-path
+                      `((,unresolved . "python")
+                        (,valid . "python"))
+                      tmp-dir)))
+        (should (member "ty"
+                        (append (alist-get 'workspaceConfigSections result) nil)))
+        (my-test--assert-file-diagnostics
+         result unresolved '("unresolved-import") '("ty"))
+        (my-test--assert-file-diagnostics result valid '())))))
 
 (ert-deftest eglot-python-preset-rass-live-real-ty-ruff-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1067,10 +1116,28 @@ the Python project boundary."
   (skip-unless (executable-find "ty"))
   (skip-unless (executable-find "ruff"))
   (skip-unless (executable-find "uv"))
-  (let ((result (my-test-run-live-real-rass-client '(ty ruff) 'ty)))
-    (should (member "ty" (alist-get 'workspaceConfigSections result)))
-    (my-test-assert-diagnostics
-     result '("F401" "unresolved-import") '("ty" "ruff"))))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ty" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (default-directory tmp-dir))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" unresolved))
+        (error "uv sync --script failed for %s" unresolved))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" valid))
+        (error "uv sync --script failed for %s" valid))
+      (let* ((preset-path (my-test-rass-preset-path unresolved '(ty ruff)))
+             (result (my-test--run-rass-session
+                      preset-path
+                      `((,unresolved . "python")
+                        (,valid . "python"))
+                      tmp-dir)))
+        (should (member "ty"
+                        (append (alist-get 'workspaceConfigSections result) nil)))
+        (my-test--assert-file-diagnostics
+         result unresolved '("F401" "unresolved-import") '("ty" "ruff"))
+        (my-test--assert-file-diagnostics result valid '())))))
 
 (ert-deftest eglot-python-preset-rass-live-real-basedpyright-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1078,12 +1145,30 @@ the Python project boundary."
   (skip-unless (executable-find "rass"))
   (skip-unless (executable-find "basedpyright-langserver"))
   (skip-unless (executable-find "uv"))
-  (let ((result (my-test-run-live-real-rass-client '(basedpyright) 'basedpyright)))
-    (should (cl-intersection (alist-get 'workspaceConfigSections result)
-                             '("python" "basedpyright" "basedpyright.analysis")
-                             :test #'equal))
-    (my-test-assert-diagnostics
-     result '("reportMissingModuleSource" "reportUnusedImport")
-     '("basedpyright"))))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "basedpyright" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (default-directory tmp-dir))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" unresolved))
+        (error "uv sync --script failed for %s" unresolved))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" valid))
+        (error "uv sync --script failed for %s" valid))
+      (let* ((preset-path (my-test-rass-preset-path unresolved '(basedpyright)))
+             (result (my-test--run-rass-session
+                      preset-path
+                      `((,unresolved . "python")
+                        (,valid . "python"))
+                      tmp-dir)))
+        (should (cl-intersection
+                 (append (alist-get 'workspaceConfigSections result) nil)
+                 '("python" "basedpyright" "basedpyright.analysis")
+                 :test #'equal))
+        (my-test--assert-file-diagnostics
+         result unresolved
+         '("reportMissingModuleSource" "reportUnusedImport") '("basedpyright"))
+        (my-test--assert-file-diagnostics result valid '())))))
 
 ;;; test/test.el ends here

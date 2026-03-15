@@ -1,0 +1,5 @@
+# /// script
+# dependencies = []
+# ///
+
+import requests
