@@ -91,6 +91,7 @@ def main():
     workspace_sections = []
     diagnostic_sources = []
     diagnostic_codes = []
+    diagnostics = []
     initialized = False
     message_queue, reader_thread = start_message_reader(proc)
 
@@ -182,6 +183,14 @@ def main():
                         diagnostic_sources.append(str(source))
                     if code is not None:
                         diagnostic_codes.append(str(code))
+                    diagnostics.append(
+                        {
+                            "source": source,
+                            "code": code,
+                            "message": diagnostic.get("message", ""),
+                            "severity": diagnostic.get("severity"),
+                        }
+                    )
                 continue
 
         next_id = request(proc, next_id, "shutdown", None)
@@ -213,6 +222,7 @@ def main():
                 "workspaceConfigSections": workspace_sections,
                 "diagnosticSources": diagnostic_sources,
                 "diagnosticCodes": diagnostic_codes,
+                "diagnostics": diagnostics,
             }
         )
     )

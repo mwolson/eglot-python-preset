@@ -271,9 +271,22 @@ If TARGET-NAME is non-nil, rename the file."
              (my-test-run-live-rass-client preset-path python-file))))
       (delete-directory project-dir t))))
 
-(defun my-test-normalized-diagnostic-sources (result)
-  "Return RESULT diagnostic sources normalized to lowercase."
-  (mapcar #'downcase (alist-get 'diagnosticSources result)))
+(defun my-test-assert-diagnostics (result expected-codes
+                                          &optional expected-sources)
+  "Assert RESULT has exactly EXPECTED-CODES diagnostics.
+EXPECTED-CODES is compared as sorted deduplicated sets against the
+actual diagnostic codes.  Fails if there are unexpected or missing
+codes.  EXPECTED-SOURCES, when non-nil, lists source patterns that
+must each match at least one actual source."
+  (let-alist result
+    (should .initialized)
+    (let ((actual (sort (delete-dups (append .diagnosticCodes nil))
+                        #'string<))
+          (expected (sort (copy-sequence expected-codes) #'string<)))
+      (should (equal actual expected)))
+    (dolist (src-pat expected-sources)
+      (should (cl-some (lambda (s) (string-match-p src-pat s))
+                       (append .diagnosticSources nil))))))
 
 (defun my-test-run-rass-template-unit (preset-path)
   "Run the Python template unit helper against PRESET-PATH."
@@ -1011,24 +1024,22 @@ the Python project boundary."
   (skip-unless (executable-find "python3"))
   (skip-unless (executable-find "rass"))
   (let ((result (my-test-run-live-fake-ruff-client '(ruff))))
-    (should (equal '("FLAG_MISSING")
-                   (alist-get 'diagnosticCodes result)))))
+    (my-test-assert-diagnostics result '("FLAG_MISSING") '("fake-ruff"))))
 
 (ert-deftest eglot-python-preset-rass-live-ruff-isolated-passthrough ()
   (skip-unless (my-test-live-tests-enabled-p))
   (skip-unless (executable-find "python3"))
   (skip-unless (executable-find "rass"))
   (let ((result (my-test-run-live-fake-ruff-client '(["ruff" "--isolated" "server"]))))
-    (should (equal '("FLAG_PASSED")
-                   (alist-get 'diagnosticCodes result)))))
+    (my-test-assert-diagnostics result '("FLAG_PASSED") '("fake-ruff"))))
 
 (ert-deftest eglot-python-preset-rass-live-ty-ruff-default-init-options ()
   (skip-unless (my-test-live-tests-enabled-p))
   (skip-unless (executable-find "python3"))
   (skip-unless (executable-find "rass"))
   (let ((result (my-test-run-live-fake-ty-ruff-client '(ty ruff))))
-    (should (member "INIT_OPTIONS_PRESENT"
-                    (alist-get 'diagnosticCodes result)))))
+    (my-test-assert-diagnostics
+     result '("FLAG_MISSING" "INIT_OPTIONS_PRESENT") '("fake-ruff"))))
 
 (ert-deftest eglot-python-preset-rass-live-real-ruff-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1036,8 +1047,7 @@ the Python project boundary."
   (skip-unless (executable-find "rass"))
   (skip-unless (executable-find "ruff"))
   (let ((result (my-test-run-live-real-rass-client '(ruff) 'ruff)))
-    (should (alist-get 'initialized result))
-    (should (member "ruff" (my-test-normalized-diagnostic-sources result)))))
+    (my-test-assert-diagnostics result '("F401") '("ruff"))))
 
 (ert-deftest eglot-python-preset-rass-live-real-ty-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1046,8 +1056,9 @@ the Python project boundary."
   (skip-unless (executable-find "ty"))
   (skip-unless (executable-find "uv"))
   (let ((result (my-test-run-live-real-rass-client '(ty) 'ty)))
-    (should (alist-get 'initialized result))
-    (should (member "ty" (alist-get 'workspaceConfigSections result)))))
+    (should (member "ty" (alist-get 'workspaceConfigSections result)))
+    (my-test-assert-diagnostics
+     result '("unresolved-import") '("ty"))))
 
 (ert-deftest eglot-python-preset-rass-live-real-ty-ruff-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1057,11 +1068,9 @@ the Python project boundary."
   (skip-unless (executable-find "ruff"))
   (skip-unless (executable-find "uv"))
   (let ((result (my-test-run-live-real-rass-client '(ty ruff) 'ty)))
-    (should (alist-get 'initialized result))
     (should (member "ty" (alist-get 'workspaceConfigSections result)))
-    (should (cl-intersection (my-test-normalized-diagnostic-sources result)
-                             '("ty" "ruff")
-                             :test #'equal))))
+    (my-test-assert-diagnostics
+     result '("F401" "unresolved-import") '("ty" "ruff"))))
 
 (ert-deftest eglot-python-preset-rass-live-real-basedpyright-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1069,12 +1078,12 @@ the Python project boundary."
   (skip-unless (executable-find "rass"))
   (skip-unless (executable-find "basedpyright-langserver"))
   (skip-unless (executable-find "uv"))
-  (let ((result (my-test-run-live-real-rass-client '(basedpyright) 'basedpyright))
-        (sections nil))
-    (setq sections (alist-get 'workspaceConfigSections result))
-    (should (alist-get 'initialized result))
-    (should (cl-intersection sections
+  (let ((result (my-test-run-live-real-rass-client '(basedpyright) 'basedpyright)))
+    (should (cl-intersection (alist-get 'workspaceConfigSections result)
                              '("python" "basedpyright" "basedpyright.analysis")
-                             :test #'equal))))
+                             :test #'equal))
+    (my-test-assert-diagnostics
+     result '("reportMissingModuleSource" "reportUnusedImport")
+     '("basedpyright"))))
 
 ;;; test/test.el ends here
