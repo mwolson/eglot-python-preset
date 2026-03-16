@@ -78,8 +78,8 @@ This runs:
 - `bun run check:package-lint`
 - `bun run check:melpa:install`
 
-There is also a variant that invokes the same four checks via bun sub-commands
-instead of the shell script:
+There is also a variant that invokes the same four checks plus the full test
+suite via bun sub-commands:
 
 ```sh
 bun run check:melpa:all

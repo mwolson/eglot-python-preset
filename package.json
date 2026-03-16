@@ -11,7 +11,7 @@
     "check": "./scripts/byte-compile.sh --check",
     "check:doc": "./scripts/checkdoc.sh",
     "check:melpa": "./scripts/melpa-check.sh",
-    "check:melpa:all": "bun run check && bun run check:doc && bun run check:package-lint && bun run check:melpa:install",
+    "check:melpa:all": "bun run check && bun run check:doc && bun run check:package-lint && bun run check:melpa:install && bun run test:all",
     "check:melpa:install": "./scripts/melpa-build-install-check.sh",
     "check:package-lint": "./scripts/package-lint.sh",
     "init": "bun run up && bun run init:hooks",
