@@ -78,6 +78,13 @@ This runs:
 - `bun run check:package-lint`
 - `bun run check:melpa:install`
 
+There is also a variant that invokes the same four checks via bun sub-commands
+instead of the shell script:
+
+```sh
+bun run check:melpa:all
+```
+
 If you only need one part of that checklist, you can run the sub-commands
 directly.
 
