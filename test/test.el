@@ -1092,8 +1092,8 @@ the Python project boundary."
   (skip-unless (executable-find "uv"))
   (my-test-with-tmp-dir tmp-dir
     (my-test--setup-fixture-dir "ty" tmp-dir)
-    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
-           (valid (expand-file-name "valid.py" tmp-dir))
+    (let* ((unresolved (expand-file-name "pep-unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "pep-valid.py" tmp-dir))
            (default-directory tmp-dir))
       (unless (zerop (call-process "uv" nil nil nil
                                    "sync" "--script" unresolved))
@@ -1122,8 +1122,8 @@ the Python project boundary."
   (skip-unless (executable-find "uv"))
   (my-test-with-tmp-dir tmp-dir
     (my-test--setup-fixture-dir "ty" tmp-dir)
-    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
-           (valid (expand-file-name "valid.py" tmp-dir))
+    (let* ((unresolved (expand-file-name "pep-unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "pep-valid.py" tmp-dir))
            (default-directory tmp-dir))
       (unless (zerop (call-process "uv" nil nil nil
                                    "sync" "--script" unresolved))
@@ -1151,8 +1151,8 @@ the Python project boundary."
   (skip-unless (executable-find "uv"))
   (my-test-with-tmp-dir tmp-dir
     (my-test--setup-fixture-dir "basedpyright" tmp-dir)
-    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
-           (valid (expand-file-name "valid.py" tmp-dir))
+    (let* ((unresolved (expand-file-name "pep-unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "pep-valid.py" tmp-dir))
            (default-directory tmp-dir))
       (unless (zerop (call-process "uv" nil nil nil
                                    "sync" "--script" unresolved))
@@ -1174,6 +1174,103 @@ the Python project boundary."
          result unresolved
          '("reportMissingModuleSource" "reportUnusedImport") '("basedpyright"))
         (my-test--assert-file-diagnostics result valid '())))))
+
+(ert-deftest eglot-python-preset-rass-live-real-ty-non-pep-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "ty"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ty" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path unresolved '(ty)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unresolved . "python")
+                      (,valid . "python"))
+                    tmp-dir)))
+      (should (member "ty"
+                      (append (alist-get 'workspaceConfigSections result) nil)))
+      (my-test--assert-file-diagnostics
+       result unresolved '("unresolved-import") '("ty"))
+      (my-test--assert-file-diagnostics result valid '()))))
+
+(ert-deftest eglot-python-preset-rass-live-real-basedpyright-non-pep-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "basedpyright-langserver"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "basedpyright" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path unresolved '(basedpyright)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unresolved . "python")
+                      (,valid . "python"))
+                    tmp-dir)))
+      (should (cl-intersection
+               (append (alist-get 'workspaceConfigSections result) nil)
+               '("python" "basedpyright" "basedpyright.analysis")
+               :test #'equal))
+      (my-test--assert-file-diagnostics
+       result unresolved
+       '("reportMissingModuleSource" "reportUnusedImport") '("basedpyright"))
+      (my-test--assert-file-diagnostics result valid '()))))
+
+(ert-deftest eglot-python-preset-rass-live-real-ruff-ty-pep-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "ty"))
+  (skip-unless (executable-find "ruff"))
+  (skip-unless (executable-find "uv"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ruff-ty" tmp-dir)
+    (let* ((unresolved (expand-file-name "pep-unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "pep-valid.py" tmp-dir))
+           (default-directory tmp-dir))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" unresolved))
+        (error "uv sync --script failed for %s" unresolved))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" valid))
+        (error "uv sync --script failed for %s" valid))
+      (let* ((preset-path (my-test-rass-preset-path unresolved '(ty ruff)))
+             (result (my-test--run-rass-session
+                      preset-path
+                      `((,unresolved . "python")
+                        (,valid . "python"))
+                      tmp-dir)))
+        (should (member "ty"
+                        (append (alist-get 'workspaceConfigSections result) nil)))
+        (my-test--assert-file-diagnostics
+         result unresolved '("F401" "unresolved-import") '("ty" "ruff"))
+        (my-test--assert-file-diagnostics result valid '())))))
+
+(ert-deftest eglot-python-preset-rass-live-real-ruff-ty-non-pep-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "ty"))
+  (skip-unless (executable-find "ruff"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ruff-ty" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path unresolved '(ty ruff)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unresolved . "python")
+                      (,valid . "python"))
+                    tmp-dir)))
+      (should (member "ty"
+                      (append (alist-get 'workspaceConfigSections result) nil)))
+      (my-test--assert-file-diagnostics
+       result unresolved '("F401" "unresolved-import") '("ty" "ruff"))
+      (my-test--assert-file-diagnostics result valid '()))))
 
 (defun my-test-run-live-tests-parallel ()
   "Run all live tests in parallel child Emacs processes, then exit.

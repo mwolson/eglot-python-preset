@@ -1,5 +1,1 @@
-# /// script
-# dependencies = []
-# ///
-
 import requests
