@@ -650,9 +650,10 @@ Includes initializationOptions for ty with PEP-723 scripts."
 For PEP-723 scripts, returns (python-script . SCRIPT-PATH) so each script
 gets its own eglot server instance.
 Otherwise, returns (python-project . ROOT) if DIR is inside a Python project.
-Only activates when `eglot-lsp-context' is non-nil so that
-`project-find-file' and other project.el commands fall through to
-the VC backend, which respects .gitignore."
+Only activates when `eglot-lsp-context' is non-nil and the current
+buffer is in a Python major mode, so that non-Python buffers
+\(e.g. TypeScript files in a polyglot project) fall through to other
+project backends."
   (when (bound-and-true-p eglot-lsp-context)
     (cond
      ((eglot-python-preset--in-indirect-md-buffer-p)
@@ -660,9 +661,10 @@ the VC backend, which respects .gitignore."
      ((and (derived-mode-p 'python-base-mode)
            (eglot-python-preset-has-metadata-p))
       (cons 'python-script (buffer-file-name)))
-     ((when-let* ((root (locate-dominating-file
-                         dir #'eglot-python-preset--python-project-root-p)))
-        (cons 'python-project root))))))
+     ((and (derived-mode-p 'python-base-mode)
+           (when-let* ((root (locate-dominating-file
+                              dir #'eglot-python-preset--python-project-root-p)))
+             (cons 'python-project root)))))))
 
 (cl-defmethod project-root ((project (head python-script)))
   "Return directory containing the script for PROJECT."

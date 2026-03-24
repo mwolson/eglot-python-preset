@@ -942,7 +942,8 @@ each match at least one actual source."
   (my-test-with-tmp-dir tmp-dir
     (let* ((project-dir (expand-file-name "myproject/" tmp-dir))
            (src-dir (expand-file-name "src/" project-dir))
-           (eglot-lsp-context t))
+           (eglot-lsp-context t)
+           (major-mode 'python-mode))
       (make-directory src-dir t)
       (with-temp-file (expand-file-name "pyproject.toml" project-dir)
         (insert "[project]\nname = \"test\"\n"))
@@ -962,6 +963,22 @@ each match at least one actual source."
       (with-temp-file (expand-file-name "pyproject.toml" project-dir)
         (insert "[project]\nname = \"test\"\n"))
       (should-not (eglot-python-preset--project-find src-dir)))))
+
+(ert-deftest eglot-python-preset-project-find-ignores-non-python-modes ()
+  "Return nil for non-Python major modes even when Python markers exist."
+  (my-test-with-tmp-dir tmp-dir
+    (let* ((project-dir (expand-file-name "myproject/" tmp-dir))
+           (src-dir (expand-file-name "src/" project-dir))
+           (eglot-lsp-context t))
+      (make-directory src-dir t)
+      (with-temp-file (expand-file-name "pyproject.toml" project-dir)
+        (insert "[project]\nname = \"test\"\n"))
+      (with-temp-file (expand-file-name "package.json" project-dir)
+        (insert "{}"))
+      (let ((major-mode 'python-mode))
+        (should (eglot-python-preset--project-find src-dir)))
+      (let ((major-mode 'jtsx-typescript-mode))
+        (should-not (eglot-python-preset--project-find src-dir))))))
 
 (ert-deftest eglot-python-preset-project-root-returns-correct-dir ()
   "Project root returns the correct directory."
@@ -1001,7 +1018,8 @@ the Python project boundary."
       (with-temp-file (expand-file-name "output.py" frontend-dist)
         (insert "compiled output\n"))
       ;; 1. With eglot-lsp-context, project-find scopes to frontend
-      (let ((eglot-lsp-context t))
+      (let ((eglot-lsp-context t)
+            (major-mode 'python-mode))
         (let ((result (eglot-python-preset--project-find frontend-src)))
           (should result)
           (should (eq (car result) 'python-project))
