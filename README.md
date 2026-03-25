@@ -167,6 +167,15 @@ Or with a custom preset path:
 Note that this will remove support for PEP-723 scripts unless the preset is
 updated to handle it.
 
+### `eglot-python-preset-python-modes`
+
+Major modes for Python files:
+
+```elisp
+(setopt eglot-python-preset-python-modes
+        '(python-mode python-ts-mode))  ; default
+```
+
 ### `eglot-python-preset-python-project-markers`
 
 Files that indicate a Python project root:
@@ -241,6 +250,7 @@ prompting:
 - `eglot-python-preset-lsp-server` accepts `ty`, `basedpyright`, or `rass`.
 - `eglot-python-preset-rass-tools` accepts lists of known tool symbols (`ty`,
   `ruff`, `basedpyright`).
+- `eglot-python-preset-python-modes` accepts lists of symbols.
 - `eglot-python-preset-python-project-markers` accepts lists of filename
   strings.
 
@@ -287,3 +297,6 @@ project.
   sessions.
 - If you see a warning about the environment not being synced, run
   `M-x eglot-python-preset-sync-environment`.
+- When using the `rass` backend, the package enables streaming diagnostics so
+  that LSP servers using pull diagnostics (like some linters) work correctly
+  with Eglot's push-based diagnostics model.

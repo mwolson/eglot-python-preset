@@ -68,9 +68,12 @@
 (require 'cl-lib)
 (require 'json)
 
+(declare-function eglot-client-capabilities "eglot")
+(declare-function eglot--major-modes "eglot")
 (declare-function eglot--managed-buffers "eglot")
 (declare-function eglot-current-server "eglot")
 (declare-function eglot-ensure "eglot")
+(declare-function eglot-handle-notification "eglot")
 (declare-function eglot-shutdown "eglot")
 
 (defvar eglot-server-programs)
@@ -145,6 +148,13 @@ any supported special handling."
   :group 'eglot-python-preset)
 
 ;;;###autoload
+(defcustom eglot-python-preset-python-modes
+  '(python-mode python-ts-mode)
+  "Major modes for Python files."
+  :type '(repeat symbol)
+  :group 'eglot-python-preset)
+
+;;;###autoload
 (defcustom eglot-python-preset-python-project-markers
   '("pyproject.toml" "requirements.txt")
   "Files that indicate a Python project root."
@@ -167,6 +177,18 @@ are excluded because they could execute arbitrary programs."
 
 (put 'eglot-python-preset-rass-tools 'safe-local-variable
      #'eglot-python-preset--rass-tools-safe-p)
+
+(defun eglot-python-preset--modes-safe-p (value)
+  "Return non-nil if VALUE is a safe `eglot-python-preset-python-modes'."
+  (and (listp value)
+       (seq-every-p #'symbolp value)))
+
+(put 'eglot-python-preset-python-modes 'safe-local-variable
+     #'eglot-python-preset--modes-safe-p)
+
+(defun eglot-python-preset--all-managed-modes ()
+  "Return a list of all major modes managed by this preset."
+  eglot-python-preset-python-modes)
 
 (defun eglot-python-preset--project-markers-safe-p (value)
   "Return non-nil if VALUE is a safe `eglot-python-preset-python-project-markers'."
@@ -654,17 +676,16 @@ Only activates when `eglot-lsp-context' is non-nil and the current
 buffer is in a Python major mode, so that non-Python buffers
 \(e.g. TypeScript files in a polyglot project) fall through to other
 project backends."
-  (when (bound-and-true-p eglot-lsp-context)
+  (when (and (bound-and-true-p eglot-lsp-context)
+             (not (eglot-python-preset--in-indirect-md-buffer-p))
+             (apply #'derived-mode-p
+                    (eglot-python-preset--all-managed-modes)))
     (cond
-     ((eglot-python-preset--in-indirect-md-buffer-p)
-      nil)
-     ((and (derived-mode-p 'python-base-mode)
-           (eglot-python-preset-has-metadata-p))
+     ((eglot-python-preset-has-metadata-p)
       (cons 'python-script (buffer-file-name)))
-     ((and (derived-mode-p 'python-base-mode)
-           (when-let* ((root (locate-dominating-file
-                              dir #'eglot-python-preset--python-project-root-p)))
-             (cons 'python-project root)))))))
+     ((when-let* ((root (locate-dominating-file
+                          dir #'eglot-python-preset--python-project-root-p)))
+        (cons 'python-project root))))))
 
 (cl-defmethod project-root ((project (head python-script)))
   "Return directory containing the script for PROJECT."
@@ -747,6 +768,46 @@ Run `eglot-python-preset-sync-environment' to create a managed environment"))
           (delete-directory env-dir t)
           (message "Environment removed: %s" env-dir))))))
 
+(defun eglot-python-preset--our-server-p (server)
+  "Return non-nil if SERVER manages modes from this preset."
+  (cl-some (lambda (m) (memq m eglot-python-preset-python-modes))
+           (eglot--major-modes server)))
+
+(defvar eglot-python-preset--streaming-diag-table (make-hash-table :test #'equal)
+  "Per-URI hash of streaming diagnostic tokens.
+Each key is a URI string.  Each value is a hash table mapping
+token strings to their latest diagnostics vector.")
+
+(defun eglot-python-preset--client-capabilities-a (orig-fn server)
+  "Advice to inject streaming diagnostics capability.
+Calls ORIG-FN with SERVER and adds :$streamingDiagnostics t to the
+:textDocument plist so that rass enables pull-to-push streaming.
+Only applies to servers managing modes from this preset."
+  (let ((caps (funcall orig-fn server)))
+    (when (eglot-python-preset--our-server-p server)
+      (clrhash eglot-python-preset--streaming-diag-table)
+      (let ((td (plist-get caps :textDocument)))
+        (when td
+          (plist-put td :$streamingDiagnostics t))))
+    caps))
+
+(cl-defmethod eglot-handle-notification
+  (server (_method (eql $/streamDiagnostics)) &key uri token diagnostics
+          &allow-other-keys)
+  "Accumulate per-token diagnostics and publish the merged set.
+SERVER receives the merged diagnostics for URI.  Each TOKEN
+identifies a sub-server whose DIAGNOSTICS are stored separately,
+then all tokens for the URI are combined before forwarding to
+the standard publishDiagnostics handler."
+  (let ((by-token (or (gethash uri eglot-python-preset--streaming-diag-table)
+                      (puthash uri (make-hash-table :test #'equal)
+                               eglot-python-preset--streaming-diag-table))))
+    (puthash token (or diagnostics []) by-token)
+    (let ((merged []))
+      (maphash (lambda (_tok diags) (setq merged (vconcat merged diags))) by-token)
+      (eglot-handle-notification server 'textDocument/publishDiagnostics
+                                 :uri uri :diagnostics merged))))
+
 ;;;###autoload
 (defun eglot-python-preset-setup ()
   "Set up Eglot to support Python modes, including PEP-723 support.
@@ -756,9 +817,11 @@ Configures `eglot-server-programs' based on `eglot-python-preset-lsp-server'.
 Call this after loading Eglot."
   (interactive)
   (add-to-list 'eglot-server-programs
-               '((python-ts-mode python-mode) .
+               `(,eglot-python-preset-python-modes .
                  eglot-python-preset--server-contact))
   (add-hook 'project-find-functions #'eglot-python-preset--project-find)
+  (advice-add 'eglot-client-capabilities :around
+              #'eglot-python-preset--client-capabilities-a)
   (advice-add 'eglot--workspace-configuration-plist :around
               #'eglot-python-preset--workspace-configuration-plist-a)
   (add-hook 'python-base-mode-hook #'eglot-ensure t))

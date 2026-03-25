@@ -930,6 +930,17 @@ each match at least one actual source."
   (should-not (eglot-python-preset--rass-tools-safe-p '(unknown)))
   (should-not (eglot-python-preset--rass-tools-safe-p "ty")))
 
+(ert-deftest eglot-python-preset-python-modes-safe-local-variable ()
+  (should (eglot-python-preset--modes-safe-p
+           '(python-mode python-ts-mode)))
+  (should (eglot-python-preset--modes-safe-p '()))
+  (should-not (eglot-python-preset--modes-safe-p '("python-mode")))
+  (should-not (eglot-python-preset--modes-safe-p "python-mode")))
+
+(ert-deftest eglot-python-preset-all-managed-modes ()
+  (should (equal eglot-python-preset-python-modes
+                 (eglot-python-preset--all-managed-modes))))
+
 (ert-deftest eglot-python-preset-project-markers-safe-local-variable ()
   (should (eglot-python-preset--project-markers-safe-p
            '("pyproject.toml" "requirements.txt")))
@@ -1047,20 +1058,99 @@ the Python project boundary."
         (project-find-functions nil)
         (python-base-mode-hook nil))
     (cl-letf (((symbol-function 'eglot--workspace-configuration-plist)
+               (lambda (&rest _) nil))
+              ((symbol-function 'eglot-client-capabilities)
                (lambda (&rest _) nil)))
       (unwind-protect
           (progn
             (eglot-python-preset-setup)
-            (should (equal '((python-ts-mode python-mode) .
+            (should (equal `(,eglot-python-preset-python-modes .
                              eglot-python-preset--server-contact)
                            (car eglot-server-programs)))
             (should (memq #'eglot-python-preset--project-find project-find-functions))
             (should (memq #'eglot-ensure python-base-mode-hook))
             (should (advice-member-p
                      #'eglot-python-preset--workspace-configuration-plist-a
-                     'eglot--workspace-configuration-plist)))
+                     'eglot--workspace-configuration-plist))
+            (should (advice-member-p
+                     #'eglot-python-preset--client-capabilities-a
+                     'eglot-client-capabilities)))
         (advice-remove 'eglot--workspace-configuration-plist
-                       #'eglot-python-preset--workspace-configuration-plist-a)))))
+                       #'eglot-python-preset--workspace-configuration-plist-a)
+        (advice-remove 'eglot-client-capabilities
+                       #'eglot-python-preset--client-capabilities-a)))))
+
+(ert-deftest eglot-python-preset-client-capabilities-injects-streaming ()
+  "Capabilities advice injects $streamingDiagnostics for Python modes."
+  (let ((base-caps '(:textDocument (:publishDiagnostics (:relatedInformation t))
+                     :workspace (:configuration t))))
+    (cl-letf (((symbol-function 'eglot--major-modes)
+               (lambda (_s) '(python-ts-mode))))
+      (let ((result (eglot-python-preset--client-capabilities-a
+                     (lambda (_s) base-caps)
+                     'mock-server)))
+        (should (eq t (plist-get (plist-get result :textDocument)
+                                 :$streamingDiagnostics)))))))
+
+(ert-deftest eglot-python-preset-client-capabilities-skips-non-python-modes ()
+  "Capabilities advice does not inject $streamingDiagnostics for other modes."
+  (let ((base-caps '(:textDocument (:publishDiagnostics (:relatedInformation t))
+                     :workspace (:configuration t))))
+    (cl-letf (((symbol-function 'eglot--major-modes)
+               (lambda (_s) '(typescript-ts-mode))))
+      (let ((result (eglot-python-preset--client-capabilities-a
+                     (lambda (_s) base-caps)
+                     'mock-server)))
+        (should-not (plist-get (plist-get result :textDocument)
+                               :$streamingDiagnostics))))))
+
+(defun my-test--streaming-merge (uri)
+  "Compute merged diagnostics vector for URI from the streaming table."
+  (let ((by-token (gethash uri eglot-python-preset--streaming-diag-table))
+        (merged []))
+    (when by-token
+      (maphash (lambda (_tok diags) (setq merged (vconcat merged diags))) by-token))
+    merged))
+
+(ert-deftest eglot-python-preset-streaming-diags-accumulates-across-tokens ()
+  "Streaming handler merges diagnostics from different tokens."
+  (clrhash eglot-python-preset--streaming-diag-table)
+  (let ((uri "file:///test-accum.py")
+        (diag1 [:message "err1"])
+        (diag2 [:message "err2"]))
+    (let ((by-token (puthash uri (make-hash-table :test #'equal)
+                             eglot-python-preset--streaming-diag-table)))
+      (puthash "server-a" (vector diag1) by-token)
+      (should (= 1 (length (my-test--streaming-merge uri))))
+      (puthash "server-b" (vector diag2) by-token)
+      (let ((merged (my-test--streaming-merge uri)))
+        (should (vectorp merged))
+        (should (= 2 (length merged)))))))
+
+(ert-deftest eglot-python-preset-streaming-diags-replaces-same-token ()
+  "Same token replaces its diagnostics, not accumulates."
+  (clrhash eglot-python-preset--streaming-diag-table)
+  (let ((uri "file:///test-replace.py")
+        (diag1 [:message "err1"]))
+    (let ((by-token (puthash uri (make-hash-table :test #'equal)
+                             eglot-python-preset--streaming-diag-table)))
+      (puthash "server-a" (vector diag1) by-token)
+      (should (= 1 (length (my-test--streaming-merge uri))))
+      (puthash "server-a" [] by-token)
+      (should (= 0 (length (my-test--streaming-merge uri)))))))
+
+(ert-deftest eglot-python-preset-streaming-diags-cleared-on-connect ()
+  "Capabilities advice clears the streaming diagnostics table."
+  (clrhash eglot-python-preset--streaming-diag-table)
+  (puthash "file:///old.py" (make-hash-table :test #'equal)
+           eglot-python-preset--streaming-diag-table)
+  (should (= 1 (hash-table-count eglot-python-preset--streaming-diag-table)))
+  (let ((base-caps '(:textDocument (:publishDiagnostics (:relatedInformation t)))))
+    (cl-letf (((symbol-function 'eglot--major-modes)
+               (lambda (_s) '(python-ts-mode))))
+      (eglot-python-preset--client-capabilities-a
+       (lambda (_s) base-caps) 'mock-server)))
+  (should (= 0 (hash-table-count eglot-python-preset--streaming-diag-table))))
 
 (ert-deftest eglot-python-preset-rass-live-ruff-symbol-uses-default-command ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1236,6 +1326,68 @@ the Python project boundary."
       (my-test--assert-file-diagnostics
        result unresolved
        '("reportMissingModuleSource" "reportUnusedImport") '("basedpyright"))
+      (my-test--assert-file-diagnostics result valid '()))))
+
+(ert-deftest eglot-python-preset-rass-live-real-basedpyright-ruff-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "basedpyright-langserver"))
+  (skip-unless (executable-find "ruff"))
+  (skip-unless (executable-find "uv"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "basedpyright-ruff" tmp-dir)
+    (let* ((unresolved (expand-file-name "pep-unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "pep-valid.py" tmp-dir))
+           (default-directory tmp-dir))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" unresolved))
+        (error "uv sync --script failed for %s" unresolved))
+      (unless (zerop (call-process "uv" nil nil nil
+                                   "sync" "--script" valid))
+        (error "uv sync --script failed for %s" valid))
+      (let* ((preset-path (my-test-rass-preset-path
+                           unresolved '(basedpyright ruff)))
+             (result (my-test--run-rass-session
+                      preset-path
+                      `((,unresolved . "python")
+                        (,valid . "python"))
+                      tmp-dir)))
+        (should (cl-intersection
+                 (append (alist-get 'workspaceConfigSections result) nil)
+                 '("python" "basedpyright" "basedpyright.analysis")
+                 :test #'equal))
+        (my-test--assert-file-diagnostics
+         result unresolved
+         '("F401" "reportMissingModuleSource" "reportUnusedImport")
+         '("basedpyright" "ruff"))
+        (my-test--assert-file-diagnostics result valid '())))))
+
+(ert-deftest eglot-python-preset-rass-live-real-basedpyright-ruff-non-pep-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "basedpyright-langserver"))
+  (skip-unless (executable-find "ruff"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "basedpyright-ruff" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path
+                         unresolved '(basedpyright ruff)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unresolved . "python")
+                      (,valid . "python"))
+                    tmp-dir)))
+      (should (cl-intersection
+               (append (alist-get 'workspaceConfigSections result) nil)
+               '("python" "basedpyright" "basedpyright.analysis")
+               :test #'equal))
+      (my-test--assert-file-diagnostics
+       result unresolved
+       '("F401" "reportMissingModuleSource" "reportUnusedImport")
+         '("basedpyright" "ruff"))
       (my-test--assert-file-diagnostics result valid '()))))
 
 (ert-deftest eglot-python-preset-rass-live-real-ruff-ty-pep-smoke ()
