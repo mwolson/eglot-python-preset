@@ -32,17 +32,19 @@ server frontend. It automatically handles environment synchronization for
 Choose one of the following ways to install. After that, opening Python files
 will automatically start the LSP server using Eglot.
 
-### From MELPA (recommended)
+### Using package-vc (recommended)
+
+For Emacs 30.2+, use the built-in `package-vc` via `use-package`:
 
 ```elisp
 (use-package eglot-python-preset
-  :ensure t
-  :after eglot
+  :vc (:url "https://github.com/mwolson/eglot-python-preset")
   :custom
-  (eglot-python-preset-lsp-server 'ty) ; or 'basedpyright or 'rass
-  :config
-  (eglot-python-preset-setup))
+  (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright or 'rass
 ```
+
+The package sets up Eglot integration automatically when Eglot loads -- no
+explicit setup call is needed.
 
 ### Manual installation
 
@@ -57,7 +59,19 @@ git clone https://github.com/mwolson/eglot-python-preset ~/devel/eglot-python-pr
 (add-to-list 'load-path (expand-file-name "~/devel/eglot-python-preset"))
 (require 'eglot-python-preset)
 (setopt eglot-python-preset-lsp-server 'ty) ; or 'basedpyright or 'rass
-(eglot-python-preset-setup)
+```
+
+### From MELPA
+
+Note: The MELPA recipe does not yet include the `rass` preset templates. It's
+recommended to use `package-vc` as above until
+[melpa/melpa#9900](https://github.com/melpa/melpa/pull/9900) is merged.
+
+```elisp
+(use-package eglot-python-preset
+  :ensure t
+  :custom
+  (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright or 'rass
 ```
 
 ## Usage
@@ -108,6 +122,21 @@ When you open a file containing PEP-723 metadata:
   using `uv run`. Opens a compilation buffer with the output.
 
 ## Configuration
+
+### `eglot-python-preset-auto-setup`
+
+Controls whether Eglot integration is set up automatically when Eglot loads
+(default: `t`). Set to `nil` before the package loads to suppress automatic
+setup and call `eglot-python-preset-setup` manually instead:
+
+```elisp
+(use-package eglot-python-preset
+  :vc (:url "https://github.com/mwolson/eglot-python-preset")
+  :custom
+  (eglot-python-preset-auto-setup nil)
+  :config
+  (eglot-python-preset-setup))
+```
 
 ### `eglot-python-preset-lsp-server`
 
@@ -198,25 +227,22 @@ directory from growing without bound:
 
 ### Workspace Configuration (basedpyright)
 
-To customize basedpyright settings, set `eglot-workspace-configuration` before
-calling `eglot-python-preset-setup`. Your settings will be merged with PEP-723
-script configurations (which add the Python interpreter path).
+To customize basedpyright settings, set `eglot-workspace-configuration`. Your
+settings will be merged with PEP-723 script configurations (which add the Python
+interpreter path).
 
 Example to disable auto-import completions and set type checking mode:
 
 ```elisp
 ;; With use-package
 (use-package eglot-python-preset
-  :ensure t
-  :after eglot
+  :vc (:url "https://github.com/mwolson/eglot-python-preset")
   :custom
   (eglot-python-preset-lsp-server 'basedpyright)
   (eglot-workspace-configuration
    '(:basedpyright.analysis
      (:autoImportCompletions :json-false
-      :typeCheckingMode "basic")))
-  :config
-  (eglot-python-preset-setup))
+      :typeCheckingMode "basic"))))
 
 ;; Or manually (can be spread across multiple init.el sections)
 (setopt eglot-python-preset-lsp-server 'basedpyright)
@@ -225,7 +251,6 @@ Example to disable auto-import completions and set type checking mode:
                    :basedpyright.analysis
                    '(:autoImportCompletions :json-false
                      :typeCheckingMode "basic")))
-(eglot-python-preset-setup)
 ```
 
 ### Per-project Configuration

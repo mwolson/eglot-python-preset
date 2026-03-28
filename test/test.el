@@ -1056,7 +1056,8 @@ the Python project boundary."
 (ert-deftest eglot-python-preset-setup-registers-hooks-and-contact ()
   (let ((eglot-server-programs nil)
         (project-find-functions nil)
-        (python-base-mode-hook nil))
+        (python-base-mode-hook nil)
+        (eglot-python-preset--setup-done nil))
     (cl-letf (((symbol-function 'eglot--workspace-configuration-plist)
                (lambda (&rest _) nil))
               ((symbol-function 'eglot-client-capabilities)
@@ -1079,6 +1080,41 @@ the Python project boundary."
                        #'eglot-python-preset--workspace-configuration-plist-a)
         (advice-remove 'eglot-client-capabilities
                        #'eglot-python-preset--client-capabilities-a)))))
+
+(ert-deftest eglot-python-preset-maybe-setup-runs-when-auto-setup-t ()
+  "Auto-setup calls setup when `eglot-python-preset-auto-setup' is t."
+  (let ((eglot-server-programs nil)
+        (project-find-functions nil)
+        (python-base-mode-hook nil)
+        (eglot-python-preset--setup-done nil)
+        (eglot-python-preset-auto-setup t))
+    (cl-letf (((symbol-function 'eglot--workspace-configuration-plist)
+               (lambda (&rest _) nil))
+              ((symbol-function 'eglot-client-capabilities)
+               (lambda (&rest _) nil)))
+      (unwind-protect
+          (progn
+            (eglot-python-preset--maybe-setup)
+            (should (equal `(,eglot-python-preset-python-modes .
+                             eglot-python-preset--server-contact)
+                           (car eglot-server-programs)))
+            (should (memq #'eglot-python-preset--project-find project-find-functions)))
+        (advice-remove 'eglot--workspace-configuration-plist
+                       #'eglot-python-preset--workspace-configuration-plist-a)
+        (advice-remove 'eglot-client-capabilities
+                       #'eglot-python-preset--client-capabilities-a)))))
+
+(ert-deftest eglot-python-preset-maybe-setup-skips-when-auto-setup-nil ()
+  "Auto-setup skips setup when `eglot-python-preset-auto-setup' is nil."
+  (let ((eglot-server-programs nil)
+        (project-find-functions nil)
+        (python-base-mode-hook nil)
+        (eglot-python-preset--setup-done nil)
+        (eglot-python-preset-auto-setup nil))
+    (eglot-python-preset--maybe-setup)
+    (should (null eglot-server-programs))
+    (should (null project-find-functions))
+    (should (null python-base-mode-hook))))
 
 (ert-deftest eglot-python-preset-client-capabilities-injects-streaming ()
   "Capabilities advice injects $streamingDiagnostics for Python modes."

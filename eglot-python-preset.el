@@ -38,13 +38,12 @@
 ;; - Install ty (>= v0.0.8) or basedpyright as a Python language server
 ;; - Download this file and add it to the load path
 
-;; Quick start:
+;; Quick start (package-vc):
 ;;
-;;   (require 'eglot-python-preset)
-;;   (setopt eglot-python-preset-lsp-server 'ty)
-;;   ;; or
-;;   ;; (setopt eglot-python-preset-lsp-server 'basedpyright)
-;;   (eglot-python-preset-setup)
+;;   (use-package eglot-python-preset
+;;     :vc (:url "https://github.com/mwolson/eglot-python-preset")
+;;     :custom
+;;     (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright or 'rass
 ;;
 ;; After that, opening Python files will automatically start the LSP server using
 ;; Eglot and handle PEP-723 magic tags within files.
@@ -83,6 +82,16 @@
   "Python preset for Eglot."
   :group 'eglot
   :prefix "eglot-python-preset-")
+
+;;;###autoload
+(defcustom eglot-python-preset-auto-setup t
+  "Whether to automatically set up Eglot for Python when eglot loads.
+When non-nil, `eglot-python-preset-setup' is called automatically
+via an autoloaded `with-eval-after-load' form.  Set to nil before the
+package is loaded to suppress automatic setup and call
+`eglot-python-preset-setup' manually instead."
+  :type 'boolean
+  :group 'eglot-python-preset)
 
 ;;;###autoload
 (defcustom eglot-python-preset-lsp-server 'ty
@@ -808,23 +817,39 @@ the standard publishDiagnostics handler."
       (eglot-handle-notification server 'textDocument/publishDiagnostics
                                  :uri uri :diagnostics merged))))
 
+(defvar eglot-python-preset--setup-done nil
+  "Non-nil if `eglot-python-preset-setup' has already run.")
+
 ;;;###autoload
 (defun eglot-python-preset-setup ()
   "Set up Eglot to support Python modes, including PEP-723 support.
 
 Adds hooks for project detection and Eglot configuration.
-Configures `eglot-server-programs' based on `eglot-python-preset-lsp-server'.
-Call this after loading Eglot."
+Configures `eglot-server-programs' based on `eglot-python-preset-lsp-server'."
   (interactive)
-  (add-to-list 'eglot-server-programs
-               `(,eglot-python-preset-python-modes .
-                 eglot-python-preset--server-contact))
-  (add-hook 'project-find-functions #'eglot-python-preset--project-find)
-  (advice-add 'eglot-client-capabilities :around
-              #'eglot-python-preset--client-capabilities-a)
-  (advice-add 'eglot--workspace-configuration-plist :around
-              #'eglot-python-preset--workspace-configuration-plist-a)
-  (add-hook 'python-base-mode-hook #'eglot-ensure t))
+  (require 'eglot)
+  (unless eglot-python-preset--setup-done
+    (setq eglot-python-preset--setup-done t)
+    (add-to-list 'eglot-server-programs
+                 `(,eglot-python-preset-python-modes .
+                   eglot-python-preset--server-contact))
+    (add-hook 'project-find-functions #'eglot-python-preset--project-find)
+    (advice-add 'eglot-client-capabilities :around
+                #'eglot-python-preset--client-capabilities-a)
+    (advice-add 'eglot--workspace-configuration-plist :around
+                #'eglot-python-preset--workspace-configuration-plist-a)
+    (add-hook 'python-base-mode-hook #'eglot-ensure t)))
+
+;;;###autoload
+(progn
+  (defun eglot-python-preset--maybe-setup ()
+    "Set up Eglot for Python if auto-setup is enabled."
+    (when eglot-python-preset-auto-setup
+      (require 'eglot-python-preset nil t)
+      (eglot-python-preset-setup)))
+  (if after-init-time
+      (eglot-python-preset--maybe-setup)
+    (add-hook 'after-init-hook #'eglot-python-preset--maybe-setup t)))
 
 (provide 'eglot-python-preset)
 ;;; eglot-python-preset.el ends here
