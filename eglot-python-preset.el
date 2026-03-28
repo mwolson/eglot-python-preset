@@ -842,14 +842,17 @@ Configures `eglot-server-programs' based on `eglot-python-preset-lsp-server'."
 
 ;;;###autoload
 (progn
+  (defvar eglot-python-preset--maybe-setup-in-progress nil)
   (defun eglot-python-preset--maybe-setup ()
     "Set up Eglot for Python if auto-setup is enabled."
-    (when eglot-python-preset-auto-setup
-      (require 'eglot-python-preset nil t)
-      (eglot-python-preset-setup)))
-  (if (and after-init-time (not noninteractive))
-      (eglot-python-preset--maybe-setup)
-    (unless noninteractive
+    (unless eglot-python-preset--maybe-setup-in-progress
+      (let ((eglot-python-preset--maybe-setup-in-progress t))
+        (when eglot-python-preset-auto-setup
+          (require 'eglot-python-preset nil t)
+          (eglot-python-preset-setup)))))
+  (unless noninteractive
+    (if after-init-time
+        (eglot-python-preset--maybe-setup)
       (add-hook 'after-init-hook #'eglot-python-preset--maybe-setup t))))
 
 (provide 'eglot-python-preset)
