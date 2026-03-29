@@ -14,7 +14,8 @@ This package configures Eglot to work with Python files using
 server frontend. It automatically handles environment synchronization for
 [uv](https://github.com/astral-sh/uv)-managed scripts with inline dependencies.
 
-See also [eglot-typescript-preset](https://github.com/mwolson/eglot-typescript-preset)
+See also
+[eglot-typescript-preset](https://github.com/mwolson/eglot-typescript-preset)
 for TypeScript, JavaScript, CSS, Astro, Vue, and Svelte support.
 
 ## Prerequisites
@@ -41,7 +42,8 @@ For Emacs 30.2+, use the built-in `package-vc` via `use-package`:
 
 ```elisp
 (use-package eglot-python-preset
-  :vc (:url "https://github.com/mwolson/eglot-python-preset")
+  :vc (:url "https://github.com/mwolson/eglot-python-preset"
+       :main-file "eglot-python-preset.el")
   :custom
   (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright or 'rass
 ```
@@ -134,7 +136,8 @@ setup and call `eglot-python-preset-setup` manually instead:
 
 ```elisp
 (use-package eglot-python-preset
-  :vc (:url "https://github.com/mwolson/eglot-python-preset")
+  :vc (:url "https://github.com/mwolson/eglot-python-preset"
+       :main-file "eglot-python-preset.el")
   :custom
   (eglot-python-preset-auto-setup nil)
   :config
@@ -239,7 +242,8 @@ Example to disable auto-import completions and set type checking mode:
 ```elisp
 ;; With use-package
 (use-package eglot-python-preset
-  :vc (:url "https://github.com/mwolson/eglot-python-preset")
+  :vc (:url "https://github.com/mwolson/eglot-python-preset"
+       :main-file "eglot-python-preset.el")
   :custom
   (eglot-python-preset-lsp-server 'basedpyright)
   (eglot-workspace-configuration
