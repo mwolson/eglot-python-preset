@@ -14,6 +14,9 @@ This package configures Eglot to work with Python files using
 server frontend. It automatically handles environment synchronization for
 [uv](https://github.com/astral-sh/uv)-managed scripts with inline dependencies.
 
+See also [eglot-typescript-preset](https://github.com/mwolson/eglot-typescript-preset)
+for TypeScript, JavaScript, CSS, Astro, Vue, and Svelte support.
+
 ## Prerequisites
 
 - Emacs 30.2 or later
