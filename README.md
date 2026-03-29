@@ -43,22 +43,35 @@ For Emacs 30.2+, use the built-in `package-vc` via `use-package`:
 ```elisp
 (use-package eglot-python-preset
   :vc (:url "https://github.com/mwolson/eglot-python-preset"
-       :main-file "eglot-python-preset.el")
-  :custom
-  (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright or 'rass
+       :main-file "eglot-python-preset.el"))
 ```
 
-The package sets up Eglot integration automatically when Eglot loads -- no
+This will download and install the package automatically if it is not already
+installed. By default, `:vc` installs the latest release rather than the latest
+commit. `ty` is used as the default language server.
+
+To track the development version instead, use `:rev :newest`:
+
+```elisp
+(use-package eglot-python-preset
+  :vc (:url "https://github.com/mwolson/eglot-python-preset"
+       :main-file "eglot-python-preset.el"
+       :rev :newest))
+```
+
+The package sets up Eglot integration automatically when Eglot loads, so no
 explicit setup call is needed.
 
 ### Manual installation
 
-Clone this repository and add to your Emacs configuration:
+Clone this repository:
 
 ```bash
 mkdir -p ~/devel
 git clone https://github.com/mwolson/eglot-python-preset ~/devel/eglot-python-preset
 ```
+
+Then add it to your Emacs configuration:
 
 ```elisp
 (add-to-list 'load-path (expand-file-name "~/devel/eglot-python-preset"))
