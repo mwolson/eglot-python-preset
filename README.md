@@ -81,10 +81,6 @@ Then add it to your Emacs configuration:
 
 ### From MELPA
 
-Note: The MELPA recipe does not yet include the `rass` preset templates. It's
-recommended to use `package-vc` as above until
-[melpa/melpa#9900](https://github.com/melpa/melpa/pull/9900) is merged.
-
 ```elisp
 (use-package eglot-python-preset
   :ensure t
