@@ -1,6 +1,7 @@
 # eglot-python-preset
 
 [![MELPA](https://melpa.org/packages/eglot-python-preset-badge.svg)](https://melpa.org/#/eglot-python-preset)
+![Made for GNU Emacs](assets/badges/made-for-gnu-emacs.svg)
 
 Configures Python LSP support for Emacs using
 [Eglot](https://github.com/joaotavora/eglot), including support for
