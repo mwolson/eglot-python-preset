@@ -9,25 +9,21 @@ jobs:
     timeout-minutes: 15
     env:
       MISE_YES: "1"
-      MISE_DATA_DIR: /mise
-      MISE_CONFIG_DIR: /mise
-      MISE_CACHE_DIR: /mise/cache
     steps:
       - uses: actions/checkout@v4
       - name: Cache mise installs
         uses: actions/cache@v4
         with:
-          path: /mise/installs
+          path: ~/.local/share/mise/installs
           key: mise-${{ runner.arch }}-bun-python-uv-ruff
       - name: Install mise and tools
         env:
           GITHUB_TOKEN: ""
-          MISE_INSTALL_PATH: /usr/local/bin/mise
         run: |
           curl https://mise.run | sh
           mise use -g bun@latest python@3.10 uv@latest ruff@latest
           mise install
-          echo "$MISE_DATA_DIR/shims" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
       - name: Cache bun dependencies
         uses: actions/cache@v4
         with:
