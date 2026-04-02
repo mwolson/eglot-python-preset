@@ -1,5 +1,6 @@
 ;; byte-compile-local.el --- -*- lexical-binding: t -*-
 
+(setq text-quoting-style 'straight) ; keep quotes ASCII for grep filters
 (require 'treesit) ; to silence an autoload warning, seems like emacs bug
 (require 'package)
 (package-initialize)
