@@ -63,6 +63,9 @@ To track the development version instead, use `:rev :newest`:
 The package sets up Eglot integration automatically when Eglot loads, so no
 explicit setup call is needed.
 
+If you're interested in trying out some alpha software to improve `package-vc`
+further, take a look at [vcupp](https://github.com/mwolson/vcupp).
+
 ### Manual installation
 
 Clone this repository:
