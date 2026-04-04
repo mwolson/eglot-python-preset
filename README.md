@@ -19,6 +19,35 @@ See also
 [eglot-typescript-preset](https://github.com/mwolson/eglot-typescript-preset)
 for TypeScript, JavaScript, CSS, Astro, Vue, and Svelte support.
 
+## Why to use this library
+
+- You want Python LSP support in Emacs that just works, without spending time
+  configuring it yourself.
+- You maintain an [Emacs starter kit](https://github.com/mwolson/emacs-shared)
+  and want reliable LSP defaults for your users.
+- You use [PEP-723](https://peps.python.org/pep-0723/) inline script metadata
+  and want automatic `uv` environment synchronization, with each script getting
+  its own isolated Eglot server instance.
+- You work in polyglot projects and want Python LSP setup scoped correctly to
+  Python buffers, without interfering with other languages.
+- You want project-local `.venv/bin` executables to be preferred automatically,
+  with a fallback to globally installed tools.
+- You want to combine tools like ty or basedpyright with ruff through a single
+  Eglot connection via `rass`, without writing presets by hand or using the
+  existing rass presets.
+- You work in (or browse) quite a few different projects, each needing a
+  slightly different tool setup, and you want easy per-project configuration via
+  `.dir-locals.el` or `dir-locals-set-directory-class`.
+- You'd rather have someone else find all the edge cases and fix them in
+  advance, with tests to prevent them from recurring.
+
+## Why not to use it
+
+- You already have a Python LSP setup in Eglot that works for you.
+- The existing `rass python` preset works fine and you haven't noticed any
+  problems.
+- You prefer [lsp-mode](https://emacs-lsp.github.io/lsp-mode/) over Eglot.
+
 ## Prerequisites
 
 - Emacs 30.2 or later
