@@ -112,6 +112,13 @@ Then add it to your Emacs configuration:
 (setopt eglot-python-preset-lsp-server 'ty) ; or 'basedpyright or 'rass
 ```
 
+or:
+
+```elisp
+(use-package eglot-python-preset
+  :load-path "/path/to/eglot-python-preset")
+```
+
 ### From MELPA
 
 ```elisp
