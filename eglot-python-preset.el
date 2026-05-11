@@ -138,6 +138,13 @@ should be passed to it."
            :match-alternatives (eglot-python-preset--rass-command-vector-p)))
   :group 'eglot-python-preset)
 
+;;;###autoload
+(defcustom eglot-python-preset-rass-generated-directory
+  (expand-file-name "eglot-python-preset/" user-emacs-directory)
+  "Directory where generated `rass` presets are written."
+  :type 'directory
+  :group 'eglot-python-preset)
+
 (defcustom eglot-python-preset-rass-max-contextual-presets 50
   "Maximum number of contextual generated `rass` presets to keep.
 
@@ -436,7 +443,8 @@ directory so that local .venv resolution still works."
 
 (defun eglot-python-preset--rass-generated-dir ()
   "Return the directory used for generated `rass` presets."
-  (expand-file-name "eglot-python-preset/" user-emacs-directory))
+  (file-name-as-directory
+   (expand-file-name eglot-python-preset-rass-generated-directory)))
 
 (defun eglot-python-preset--library-dir ()
   "Return directory containing the installed library."

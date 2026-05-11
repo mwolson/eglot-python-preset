@@ -284,6 +284,15 @@ Or with a custom preset path:
 Note that this will remove support for PEP-723 scripts unless the preset is
 updated to handle it.
 
+### `eglot-python-preset-rass-generated-directory`
+
+Directory where generated `rass` presets are written:
+
+```elisp
+(setopt eglot-python-preset-rass-generated-directory
+        (expand-file-name "eglot-python-preset/" user-emacs-directory)) ; default
+```
+
 ### `eglot-python-preset-python-modes`
 
 Major modes for Python files:
@@ -410,10 +419,11 @@ project.
 - If `ty`, `basedpyright-langserver`, `pyrefly`, or `zuban` is installed only in
   a project-local `.venv`, make sure you are using v0.3.0 or later so this
   package can prefer that executable automatically.
-- If you use the `rass` backend, the package generates a preset under your Emacs
-  directory and updates it as needed. Context-free presets are reused across
-  buffers, while PEP-723 and project-local `.venv` cases keep separate generated
-  files when the preset content depends on that local context.
+- If you use the `rass` backend, the package generates a preset under
+  `eglot-python-preset-rass-generated-directory` and updates it as needed.
+  Context-free presets are reused across buffers, while PEP-723 and
+  project-local `.venv` cases keep separate generated files when the preset
+  content depends on that local context.
 
 ## Notes
 

@@ -693,6 +693,23 @@ each match at least one actual source."
       (delete-file python-file-1)
       (delete-file python-file-2))))
 
+(ert-deftest eglot-python-preset-rass-generated-directory-controls-preset-path ()
+  (let ((generated-dir (make-temp-file "rass-generated" t))
+        (python-file (make-temp-file "rass-custom-dir" nil ".py" "print('hello')\n")))
+    (unwind-protect
+        (let ((eglot-python-preset-rass-generated-directory generated-dir))
+          (cl-letf (((symbol-function 'eglot-python-preset--resolve-executable)
+                     (lambda (name)
+                       (pcase name
+                         ("ty" "/usr/bin/ty")
+                         (_ name)))))
+            (let ((preset-path (my-test-rass-preset-path python-file '(ty))))
+              (should (file-exists-p preset-path))
+              (should (eglot-python-preset--path-in-directory-p
+                       preset-path generated-dir)))))
+      (delete-directory generated-dir t)
+      (delete-file python-file))))
+
 (ert-deftest eglot-python-preset-rass-command-override-bypasses-generated-preset ()
   (let ((python-file (make-temp-file "rass-command" nil ".py" "print('hello')\n")))
     (unwind-protect
@@ -909,41 +926,39 @@ each match at least one actual source."
 (ert-deftest eglot-python-preset-rass-contextual-cleanup-limits-files ()
   (let ((generated-dir (make-temp-file "rass-generated" t)))
     (unwind-protect
-        (let ((eglot-python-preset-rass-max-contextual-presets 2))
-          (cl-letf (((symbol-function 'eglot-python-preset--rass-generated-dir)
-                     (lambda () generated-dir)))
-            (let ((paths (mapcar (lambda (name)
-                                   (expand-file-name name generated-dir))
-                                 '("rass-preset-contextual-1.py"
-                                   "rass-preset-contextual-2.py"
-                                   "rass-preset-contextual-3.py"))))
-              (cl-loop for path in paths
-                       for seconds from 1000
-                       do (with-temp-file path
-                            (insert path))
-                       do (set-file-times path (seconds-to-time seconds)))
-              (eglot-python-preset--cleanup-rass-contextual-presets (nth 0 paths))
-              (should (file-exists-p (nth 0 paths)))
-              (should (file-exists-p (nth 2 paths)))
-              (should-not (file-exists-p (nth 1 paths))))))
+        (let ((eglot-python-preset-rass-generated-directory generated-dir)
+              (eglot-python-preset-rass-max-contextual-presets 2))
+          (let ((paths (mapcar (lambda (name)
+                                 (expand-file-name name generated-dir))
+                               '("rass-preset-contextual-1.py"
+                                 "rass-preset-contextual-2.py"
+                                 "rass-preset-contextual-3.py"))))
+            (cl-loop for path in paths
+                     for seconds from 1000
+                     do (with-temp-file path
+                          (insert path))
+                     do (set-file-times path (seconds-to-time seconds)))
+            (eglot-python-preset--cleanup-rass-contextual-presets (nth 0 paths))
+            (should (file-exists-p (nth 0 paths)))
+            (should (file-exists-p (nth 2 paths)))
+            (should-not (file-exists-p (nth 1 paths)))))
       (delete-directory generated-dir t))))
 
 (ert-deftest eglot-python-preset-rass-contextual-cleanup-disabled-when-nil ()
   (let ((generated-dir (make-temp-file "rass-generated" t)))
     (unwind-protect
-        (let ((eglot-python-preset-rass-max-contextual-presets nil))
-          (cl-letf (((symbol-function 'eglot-python-preset--rass-generated-dir)
-                     (lambda () generated-dir)))
-            (let ((paths (mapcar (lambda (name)
-                                   (expand-file-name name generated-dir))
-                                 '("rass-preset-contextual-1.py"
-                                   "rass-preset-contextual-2.py"
-                                   "rass-preset-contextual-3.py"))))
-              (dolist (path paths)
-                (with-temp-file path
-                  (insert path)))
-              (eglot-python-preset--cleanup-rass-contextual-presets (car paths))
-              (should (seq-every-p #'file-exists-p paths)))))
+        (let ((eglot-python-preset-rass-generated-directory generated-dir)
+              (eglot-python-preset-rass-max-contextual-presets nil))
+          (let ((paths (mapcar (lambda (name)
+                                 (expand-file-name name generated-dir))
+                               '("rass-preset-contextual-1.py"
+                                 "rass-preset-contextual-2.py"
+                                 "rass-preset-contextual-3.py"))))
+            (dolist (path paths)
+              (with-temp-file path
+                (insert path)))
+            (eglot-python-preset--cleanup-rass-contextual-presets (car paths))
+            (should (seq-every-p #'file-exists-p paths))))
       (delete-directory generated-dir t))))
 
 (ert-deftest eglot-python-preset-template-cache-refreshes-when-file-changes ()
