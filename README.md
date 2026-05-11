@@ -11,7 +11,7 @@ project detection.
 This package configures Eglot to work with Python files using
 [ty](https://github.com/astral-sh/ty),
 [basedpyright](https://github.com/DetachHead/basedpyright),
-[pyrefly](https://pyrefly.org/), or
+[pyrefly](https://pyrefly.org/), [Zuban](https://zubanls.com/), or
 [rassumfrassum](https://github.com/joaotavora/rassumfrassum) as the language
 server frontend. It automatically handles environment synchronization for
 [uv](https://github.com/astral-sh/uv)-managed scripts with inline dependencies.
@@ -33,9 +33,9 @@ for TypeScript, JavaScript, CSS, Astro, Vue, and Svelte support.
   Python buffers, without interfering with other languages.
 - You want project-local `.venv/bin` executables to be preferred automatically,
   with a fallback to globally installed tools.
-- You want to combine tools like ty, basedpyright, or pyrefly with ruff through
-  a single Eglot connection via `rass`, without writing presets by hand or using
-  the existing rass presets.
+- You want to combine tools like ty, basedpyright, pyrefly, or zuban with ruff
+  through a single Eglot connection via `rass`, without writing presets by hand
+  or using the existing rass presets.
 - You work in (or browse) quite a few different projects, each needing a
   slightly different tool setup, and you want easy per-project configuration via
   `.dir-locals.el` or `dir-locals-set-directory-class`.
@@ -62,6 +62,9 @@ for TypeScript, JavaScript, CSS, Astro, Vue, and Svelte support.
   - [pyrefly](https://pyrefly.org/) - Meta's Python type checker and language
     server, with Django and Pydantic support. It can be installed globally or in
     a project-root `.venv`.
+  - [Zuban](https://zubanls.com/) - Python language server and type checker with
+    Mypy-compatible configuration and Django support. It can be installed
+    globally or in a project-root `.venv`.
   - [rassumfrassum](https://github.com/joaotavora/rassumfrassum) (>= v0.3.3) -
     optional stdio multiplexer for combining multiple Python tools.
 
@@ -113,7 +116,8 @@ Then add it to your Emacs configuration:
 ```elisp
 (add-to-list 'load-path (expand-file-name "~/devel/eglot-python-preset"))
 (require 'eglot-python-preset)
-(setopt eglot-python-preset-lsp-server 'ty) ; or 'basedpyright, 'pyrefly, or 'rass
+(setopt eglot-python-preset-lsp-server 'ty) ; or 'basedpyright, 'pyrefly,
+                                            ; 'zuban, or 'rass
 ```
 
 or:
@@ -129,7 +133,7 @@ or:
 (use-package eglot-python-preset
   :ensure t
   :custom
-  (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright, 'pyrefly, or 'rass
+  (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright, 'pyrefly, 'zuban, or 'rass
 ```
 
 ## Usage
@@ -208,6 +212,8 @@ Choose which language server to use:
 ;; or
 (setopt eglot-python-preset-lsp-server 'pyrefly)
 ;; or
+(setopt eglot-python-preset-lsp-server 'zuban)
+;; or
 (setopt eglot-python-preset-lsp-server 'rass)
 ```
 
@@ -246,8 +252,17 @@ provides lint diagnostics, fixes, formatting, and import organization:
 (setopt eglot-python-preset-rass-tools '(pyrefly ruff))
 ```
 
-Combining Pyrefly with ty or basedpyright is not recommended as a default,
-because those tools all act as primary Python type or language servers.
+Zuban can also be combined with Ruff when you want Zuban for Python language
+services and type diagnostics, while keeping Ruff diagnostics, fixes,
+formatting, and import organization:
+
+```elisp
+(setopt eglot-python-preset-lsp-server 'rass)
+(setopt eglot-python-preset-rass-tools '(zuban ruff))
+```
+
+Combining Pyrefly or Zuban with ty or basedpyright is not recommended as a
+default, because those tools all act as primary Python type or language servers.
 
 ### `eglot-python-preset-rass-command`
 
@@ -359,10 +374,10 @@ prompting:
      (eglot-python-preset-rass-tools . (ty ruff)))))
 ```
 
-- `eglot-python-preset-lsp-server` accepts `ty`, `basedpyright`, `pyrefly`, or
-  `rass`.
+- `eglot-python-preset-lsp-server` accepts `ty`, `basedpyright`, `pyrefly`,
+  `zuban`, or `rass`.
 - `eglot-python-preset-rass-tools` accepts lists of known tool symbols (`ty`,
-  `ruff`, `basedpyright`, `pyrefly`).
+  `ruff`, `basedpyright`, `pyrefly`, `zuban`).
 - `eglot-python-preset-pyrefly-display-type-errors` accepts `default`,
   `force-on`, `force-off`, or `error-missing-imports`.
 - `eglot-python-preset-python-modes` accepts lists of symbols.
@@ -392,9 +407,9 @@ project.
 
 - Eglot publishes diagnostics through Flymake. If you are using Flycheck, you
   will need separate bridge or integration configuration in your Emacs setup.
-- If `ty`, `basedpyright-langserver`, or `pyrefly` is installed only in a
-  project-local `.venv`, make sure you are using v0.3.0 or later so this package
-  can prefer that executable automatically.
+- If `ty`, `basedpyright-langserver`, `pyrefly`, or `zuban` is installed only in
+  a project-local `.venv`, make sure you are using v0.3.0 or later so this
+  package can prefer that executable automatically.
 - If you use the `rass` backend, the package generates a preset under your Emacs
   directory and updates it as needed. Context-free presets are reused across
   buffers, while PEP-723 and project-local `.venv` cases keep separate generated
@@ -405,9 +420,9 @@ project.
 - The package uses `uv` for all Python environment management. Ensure `uv` is
   installed and in your PATH.
 - For standard Python projects, the package prefers `ty`,
-  `basedpyright-langserver`, or `pyrefly` from a project-root `.venv` and
-  otherwise falls back to PATH. The same resolution is used for supported tools
-  in generated `rass` presets.
+  `basedpyright-langserver`, `pyrefly`, or `zuban` from a project-root `.venv`
+  and otherwise falls back to PATH. The same resolution is used for supported
+  tools in generated `rass` presets.
 - For PEP-723 scripts, environments are cached by `uv` and shared across
   sessions.
 - If you see a warning about the environment not being synced, run

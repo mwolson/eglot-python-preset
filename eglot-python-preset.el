@@ -29,13 +29,13 @@
 
 ;; This package provides a preset for Eglot to work with Python files,
 ;; including support for PEP-723 script metadata and project detection.
-;; It configures the LSP server (ty, basedpyright, or pyrefly) and handles
+;; It configures the LSP server (ty, basedpyright, pyrefly, or zuban) and handles
 ;; environment synchronization for uv-managed scripts.
 
 ;; Prerequisites:
 ;;
 ;; - Install uv
-;; - Install ty (>= v0.0.8), basedpyright, or pyrefly as a Python language server
+;; - Install ty (>= v0.0.8), basedpyright, pyrefly, or zuban as a Python language server
 ;; - Download this file and add it to the load path
 
 ;; Quick start (package-vc):
@@ -43,7 +43,8 @@
 ;;   (use-package eglot-python-preset
 ;;     :vc (:url "https://github.com/mwolson/eglot-python-preset")
 ;;     :custom
-;;     (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright, 'pyrefly, or 'rass
+;;     (eglot-python-preset-lsp-server 'ty)) ; or 'basedpyright, 'pyrefly,
+;;                                            ; 'zuban, or 'rass
 ;;
 ;; After that, opening Python files will automatically start the LSP server using
 ;; Eglot and handle PEP-723 magic tags within files.
@@ -99,7 +100,8 @@ package is loaded to suppress automatic setup and call
   :type '(choice (const :tag "ty" ty)
                  (const :tag "basedpyright" basedpyright)
                  (const :tag "pyrefly" pyrefly)
-                 (const :tag "rass" rass))
+                 (const :tag "rass" rass)
+                 (const :tag "zuban" zuban))
   :group 'eglot-python-preset)
 
 ;;;###autoload
@@ -155,16 +157,17 @@ older ones are deleted.  Shared presets are not affected."
 (defcustom eglot-python-preset-rass-tools '(ty ruff)
   "Tools included in the generated `rass` preset.
 
-Each entry may be a supported symbol like `ty', `ruff', or `basedpyright',
-or a literal command vector of strings.  Literal commands are passed through
-as-is, except that known executables still get local `.venv` resolution and
-any supported special handling."
+Each entry may be a supported symbol like `ty', `ruff', `basedpyright',
+or `zuban', or a literal command vector of strings.  Literal commands are
+passed through as-is, except that known executables still get local `.venv`
+resolution and any supported special handling."
   :type '(repeat
           (choice
            (const :tag "basedpyright" basedpyright)
            (const :tag "pyrefly" pyrefly)
            (const :tag "ruff" ruff)
            (const :tag "ty" ty)
+           (const :tag "zuban" zuban)
            (restricted-sexp
             :tag "Command vector"
             :value ["command"]
@@ -187,7 +190,7 @@ any supported special handling."
 
 (defun eglot-python-preset--lsp-server-safe-p (value)
   "Return non-nil if VALUE is a safe `eglot-python-preset-lsp-server' value."
-  (memq value '(ty basedpyright pyrefly rass)))
+  (memq value '(ty basedpyright pyrefly rass zuban)))
 
 (put 'eglot-python-preset-lsp-server 'safe-local-variable
      #'eglot-python-preset--lsp-server-safe-p)
@@ -204,7 +207,8 @@ any supported special handling."
 Only lists of known symbols are considered safe.  Literal command vectors
 are excluded because they could execute arbitrary programs."
   (and (listp value)
-       (seq-every-p (lambda (item) (memq item '(basedpyright pyrefly ruff ty)))
+       (seq-every-p (lambda (item)
+                      (memq item '(basedpyright pyrefly ruff ty zuban)))
                     value)))
 
 (put 'eglot-python-preset-rass-tools 'safe-local-variable
@@ -391,7 +395,9 @@ directory so that local .venv resolution still works."
        ((string= base "ruff")
         'ruff)
        ((string= base "ty")
-        'ty)))))
+        'ty)
+       ((string= base "zuban")
+        'zuban)))))
 
 (defun eglot-python-preset--rass-tool-command (tool)
   "Return the server command for `rass` TOOL."
@@ -407,6 +413,9 @@ directory so that local .venv resolution still works."
           "server"))
    ((eq tool 'ty)
     (list (eglot-python-preset--resolve-executable "ty")
+          "server"))
+   ((eq tool 'zuban)
+    (list (eglot-python-preset--resolve-executable "zuban")
           "server"))
    ((vectorp tool)
     (let* ((command (append tool nil))
@@ -727,7 +736,10 @@ Includes initializationOptions for ty with PEP-723 scripts."
                              eglot-python-preset-rass-program)
                             (eglot-python-preset--rass-preset-path))))
                    ('ty (list (eglot-python-preset--resolve-executable "ty")
-                              "server"))))
+                              "server"))
+                   ('zuban
+                    (list (eglot-python-preset--resolve-executable "zuban")
+                          "server"))))
         (init-options (eglot-python-preset--init-options)))
     (if init-options
         `(,@command :initializationOptions ,init-options)

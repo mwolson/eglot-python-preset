@@ -412,6 +412,10 @@ each match at least one actual source."
     (should (equal '(:pyrefly (:displayTypeErrors "force-on"))
                    (eglot-python-preset--init-options)))))
 
+(ert-deftest eglot-python-preset-zuban-init-options-returns-nil ()
+  (let ((eglot-python-preset-lsp-server 'zuban))
+    (should-not (eglot-python-preset--init-options))))
+
 (ert-deftest eglot-python-preset-ty-contact-prefers-local-venv ()
   (let ((eglot-python-preset-lsp-server 'ty)
         (project-dir (make-temp-file "test-project" t)))
@@ -467,6 +471,25 @@ each match at least one actual source."
            python-file
            (lambda ()
              (should (equal (list pyrefly-path "lsp")
+                            (eglot-python-preset--server-contact nil))))))
+      (delete-directory project-dir t))))
+
+(ert-deftest eglot-python-preset-zuban-contact-prefers-local-venv ()
+  (let ((eglot-python-preset-lsp-server 'zuban)
+        (project-dir (make-temp-file "test-project" t)))
+    (unwind-protect
+        (let* ((venv-bin-dir (expand-file-name ".venv/bin" project-dir))
+               (zuban-path (expand-file-name "zuban" venv-bin-dir))
+               (python-file (expand-file-name "main.py" project-dir)))
+          (make-directory venv-bin-dir t)
+          (with-temp-file (expand-file-name "pyproject.toml" project-dir))
+          (my-test-write-executable zuban-path)
+          (with-temp-file python-file
+            (insert "print('hello')\n"))
+          (my-test-with-file-buffer
+           python-file
+           (lambda ()
+             (should (equal (list zuban-path "server")
                             (eglot-python-preset--server-contact nil))))))
       (delete-directory project-dir t))))
 
@@ -638,6 +661,21 @@ each match at least one actual source."
                  "\"python\":\"/tmp/fake-env/\"")))
       (delete-directory project-dir t))))
 
+(ert-deftest eglot-python-preset-rass-zuban-tool-generates-server-command ()
+  (let ((python-file (make-temp-file "rass-zuban" nil ".py" "print('hello')\n")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'eglot-python-preset--resolve-executable)
+                   (lambda (name)
+                     (pcase name
+                       ("zuban" "/usr/bin/zuban")
+                       (_ name)))))
+          (let ((preset-path (my-test-rass-preset-path python-file '(zuban))))
+            (my-test-assert-file-contains-all
+             preset-path
+             '("\"/usr/bin/zuban\""
+               "\"server\""))))
+      (delete-file python-file))))
+
 (ert-deftest eglot-python-preset-rass-reuses-shared-preset-for-global-tools ()
   (let ((python-file-1 (make-temp-file "rass-shared-a" nil ".py" "print('a')\n"))
         (python-file-2 (make-temp-file "rass-shared-b" nil ".py" "print('b')\n")))
@@ -802,6 +840,7 @@ each match at least one actual source."
           (should (equal "ruff" (alist-get 'ruff server-kind nil nil #'equal)))
           (should (equal "ty" (alist-get 'ty server-kind nil nil #'equal)))
           (should-not (alist-get 'unknown server-kind))
+          (should-not (alist-get 'zuban server-kind nil nil #'equal))
           (should (equal t (alist-get 'unchanged non-list-payload)))
           (should (equal t (alist-get 'existing (nth 0 payload))))
           (should (equal "/tmp/env/"
@@ -931,6 +970,7 @@ each match at least one actual source."
 (ert-deftest eglot-python-preset-rass-tools-custom-type-accepts-symbols-and-vectors ()
   (should (my-test-rass-tools-type-matches-p '(ty ruff)))
   (should (my-test-rass-tools-type-matches-p '(pyrefly ruff)))
+  (should (my-test-rass-tools-type-matches-p '(zuban ruff)))
   (should (my-test-rass-tools-type-matches-p '(ty ["custom-lsp" "--stdio"]))))
 
 (ert-deftest eglot-python-preset-rass-command-custom-type-accepts-nil-and-vectors ()
@@ -978,13 +1018,15 @@ each match at least one actual source."
   (should (eglot-python-preset--lsp-server-safe-p 'basedpyright))
   (should (eglot-python-preset--lsp-server-safe-p 'pyrefly))
   (should (eglot-python-preset--lsp-server-safe-p 'rass))
+  (should (eglot-python-preset--lsp-server-safe-p 'zuban))
   (should-not (eglot-python-preset--lsp-server-safe-p 'unknown))
   (should-not (eglot-python-preset--lsp-server-safe-p "ty"))
   (should-not (eglot-python-preset--lsp-server-safe-p nil)))
 
 (ert-deftest eglot-python-preset-rass-tools-safe-local-variable ()
   (should (eglot-python-preset--rass-tools-safe-p '(ty ruff)))
-  (should (eglot-python-preset--rass-tools-safe-p '(ty ruff basedpyright pyrefly)))
+  (should (eglot-python-preset--rass-tools-safe-p
+           '(ty ruff basedpyright pyrefly zuban)))
   (should (eglot-python-preset--rass-tools-safe-p '()))
   (should-not (eglot-python-preset--rass-tools-safe-p '(ty ["ruff" "server"])))
   (should-not (eglot-python-preset--rass-tools-safe-p '(unknown)))
@@ -1345,6 +1387,55 @@ the Python project boundary."
        '("Pyrefly" "Ruff"))
       (my-test--assert-file-diagnostics
        result type-error '("bad-argument-type") '("Pyrefly"))
+      (my-test--assert-file-diagnostics result valid '()))))
+
+(ert-deftest eglot-python-preset-rass-live-real-zuban-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "zuban"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "zuban" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (type-error (expand-file-name "type-error.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path unresolved '(zuban)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unresolved . "python")
+                      (,type-error . "python")
+                      (,valid . "python"))
+                    tmp-dir
+                    12)))
+      (my-test--assert-file-diagnostics
+       result unresolved '("import-not-found") '("zuban"))
+      (my-test--assert-file-diagnostics
+       result type-error '("arg-type") '("zuban"))
+      (my-test--assert-file-diagnostics result valid '()))))
+
+(ert-deftest eglot-python-preset-rass-live-real-zuban-ruff-smoke ()
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "ruff"))
+  (skip-unless (executable-find "zuban"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "zuban-ruff" tmp-dir)
+    (let* ((unresolved (expand-file-name "unresolved-import.py" tmp-dir))
+           (type-error (expand-file-name "type-error.py" tmp-dir))
+           (valid (expand-file-name "valid.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path unresolved '(zuban ruff)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unresolved . "python")
+                      (,type-error . "python")
+                      (,valid . "python"))
+                    tmp-dir
+                    12)))
+      (my-test--assert-file-diagnostics
+       result unresolved '("F401" "import-not-found") '("Ruff" "zuban"))
+      (my-test--assert-file-diagnostics
+       result type-error '("arg-type") '("zuban"))
       (my-test--assert-file-diagnostics result valid '()))))
 
 (ert-deftest eglot-python-preset-rass-live-real-ty-smoke ()
