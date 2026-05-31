@@ -260,6 +260,8 @@ When the user provides a version (or indicates major/minor/bugfix):
    - Use insights from examining each commit in step 2
    - Group related changes under descriptive headings (e.g., "### Refactored X",
      "### Fixed Y")
+   - Avoid a single generic `## Changes` section when the release has multiple
+     themes
    - Use bullet lists within each section to describe the changes
    - Include a brief summary of what changed and why it matters
    - Keep the "Full Changelog" link at the bottom
@@ -269,6 +271,8 @@ When the user provides a version (or indicates major/minor/bugfix):
    - Put user-visible changes first (new features, bug fixes, breaking changes)
    - Put under-the-hood changes later (refactoring, internal improvements, docs)
    - Within each section, order by user impact (most impactful first)
+   - Do not include routine verification sections or lists of check commands in
+     public release notes; report validation in the chat handoff instead.
 
 5. Tell the user to review the draft release and provide a link:
 
