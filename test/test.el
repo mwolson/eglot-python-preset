@@ -238,12 +238,28 @@ actual source."
 (defun my-test--setup-fixture-dir (fixture-subdir tmp-dir)
   "Copy FIXTURE-SUBDIR contents into TMP-DIR."
   (let ((src-dir (expand-file-name fixture-subdir my-test-fixtures-dir)))
-    (dolist (file (directory-files src-dir nil "\\`[^.]"))
-      (let ((src (expand-file-name file src-dir))
-            (dst (expand-file-name file tmp-dir)))
-        (if (file-directory-p src)
-            (copy-directory src dst nil t t)
-          (copy-file src dst t))))))
+    (dolist (file (directory-files src-dir nil))
+      (unless (member file '("." ".."))
+        (let ((src (expand-file-name file src-dir))
+              (dst (expand-file-name file tmp-dir)))
+          (if (file-directory-p src)
+              (copy-directory src dst nil t t)
+            (copy-file src dst t)))))))
+
+(ert-deftest eglot-python-preset-fixture-copy-preserves-dir-locals ()
+  "Fixture setup preserves and applies scenario dir-locals."
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ty" tmp-dir)
+    (let ((dir-locals (expand-file-name ".dir-locals.el" tmp-dir))
+          (valid (expand-file-name "valid.py" tmp-dir)))
+      (should (file-exists-p dir-locals))
+      (let ((enable-local-variables t))
+        (my-test-with-file-buffer
+         valid
+         (lambda ()
+           (hack-local-variables)
+           (should (eq eglot-python-preset-lsp-server 'rass))
+           (should (equal eglot-python-preset-rass-tools '(ty)))))))))
 
 (defun my-test-run-live-fake-ruff-client (tools)
   "Run the live `rass` client against a fake local Ruff using TOOLS."

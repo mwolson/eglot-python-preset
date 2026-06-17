@@ -75,6 +75,23 @@ Good times to run `bun run test:live`:
 Usually `bun run test` plus `bun run check` is enough for docs-only changes,
 README edits, or purely static test refactors.
 
+#### Test fixture expectations
+
+When adding support for a new Python server, tool combination, PEP-723 path, or
+project-level configuration path, add a representative fixture under
+`test/fixtures/` when it is reasonable to do so. The fixture should include the
+files a user would need to reproduce that setup, such as `pyproject.toml`,
+source files, PEP-723 scripts, tool config files, and `.dir-locals.el` when the
+scenario depends on selecting preset variables.
+
+Live tests should prefer exercising those fixture directories instead of
+constructing the whole setup inline. If `.dir-locals.el` selects the behavior,
+the test should preserve that file when copying the fixture, apply the dir-local
+variables, and assert the relevant `eglot-python-preset-*` values before
+generating the server contact or `rass` preset. Unit tests can still isolate
+lower-level helpers directly, but they should not be the only coverage for a
+user-facing scenario.
+
 ### Packaging checks
 
 Run the MELPA-oriented checks with:
