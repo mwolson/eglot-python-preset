@@ -446,13 +446,17 @@ directory so that local .venv resolution still works."
   (file-name-as-directory
    (expand-file-name eglot-python-preset-rass-generated-directory)))
 
+(defconst eglot-python-preset--load-dir
+  (when-let* ((file (or load-file-name buffer-file-name)))
+    (file-name-directory file))
+  "Directory this library was loaded from, captured at load time.")
+
 (defun eglot-python-preset--library-dir ()
   "Return directory containing the installed library."
-  (file-name-directory
-   (or load-file-name
-       byte-compile-current-file
-       (locate-library "eglot-python-preset")
-       default-directory)))
+  (or eglot-python-preset--load-dir
+      (file-name-directory
+       (or (locate-library "eglot-python-preset")
+           default-directory))))
 
 (defun eglot-python-preset--path-in-directory-p (path dir)
   "Return non-nil if PATH is inside DIR."
