@@ -267,13 +267,7 @@ When the user provides a version (or indicates major/minor/bugfix):
    diff. Commit messages may be terse or only show the first line in `--oneline`
    output, so examining the full commit is essential for accurate release notes.
 
-3. Create a draft GitHub release:
-
-   ```sh
-   gh release create v<version> --draft --title "v<version>" --generate-notes
-   ```
-
-4. Enhance the release notes with more context:
+3. Write the release notes to `tmp/release-notes-v<version>.md`:
    - Use insights from examining each commit in step 2
    - Group related changes under descriptive headings (e.g., "### Refactored X",
      "### Fixed Y")
@@ -281,8 +275,8 @@ When the user provides a version (or indicates major/minor/bugfix):
      themes
    - Use bullet lists within each section to describe the changes
    - Include a brief summary of what changed and why it matters
-   - Keep the "Full Changelog" link at the bottom
-   - Update the release with `gh release edit v<version> --notes "..."`
+   - End with a "Full Changelog" link:
+     `**Full Changelog**: https://github.com/mwolson/eglot-python-preset/compare/<previous-tag>...v<version>`
 
    Ordering guidelines:
    - Put user-visible changes first (new features, bug fixes, breaking changes)
@@ -291,8 +285,18 @@ When the user provides a version (or indicates major/minor/bugfix):
    - Do not include routine verification sections or lists of check commands in
      public release notes; report validation in the chat handoff instead.
 
-5. Tell the user to review the draft release and provide a link:
+4. Publish the GitHub release. Do not pass `--draft`: draft releases stay hidden
+   from the public releases page and attach to no tag until someone publishes
+   them by hand.
 
+   ```sh
+   gh release create v<version> --verify-tag --title "v<version>" \
+       --notes-file tmp/release-notes-v<version>.md
    ```
-   https://github.com/mwolson/eglot-python-preset/releases
+
+5. Confirm the release is published (`"isDraft": false`) and give the user its
+   link:
+
+   ```sh
+   gh release view v<version> --json isDraft,url
    ```
