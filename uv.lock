@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 
 [[package]]
@@ -19,9 +19,9 @@ dev = [{ name = "rassumfrassum", specifier = ">=0.3.3,<0.4" }]
 
 [[package]]
 name = "rassumfrassum"
-version = "0.3.3"
+version = "0.3.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3a/fc/4e060751a14aa8762a5308a5ef5b28449119e611ae8beb72d57620268b60/rassumfrassum-0.3.3.tar.gz", hash = "sha256:1acd9083069f8fd9b5b5d55cc359385174dbc606d2e5ac1308834191be472217", size = 50357, upload-time = "2026-01-24T14:04:45.889Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/25/c27eecbac62ecee4401f95ee9d68005d79dd3a4716180200b9995ed1ed68/rassumfrassum-0.3.5.tar.gz", hash = "sha256:b68cc685f0cb4c1699815c558b67128da914b69e4e75bf94074ceb2965d1aced", size = 54357, upload-time = "2026-10-03T15:01:29.024Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7d/d5/e4bff2b9941d94af21d560f363d3dd224a0f34b13e0f4d4e3efd60eb654f/rassumfrassum-0.3.3-py3-none-any.whl", hash = "sha256:e1e2c2a81a85ee70a97e3de145aef38a3d2ffa8518a3b555ce71d10f2a83cc03", size = 48759, upload-time = "2026-01-24T14:04:44.244Z" },
+    { url = "https://files.pythonhosted.org/packages/16/b9/bd197810102b14fce94908582abe3df7085f693bd6b963841a7be1d290cf/rassumfrassum-0.3.5-py3-none-any.whl", hash = "sha256:51a6096e5011ea8078db80a2f2eb48eef426f730605736f5430c23d9f774ced1", size = 52349, upload-time = "2026-10-03T15:01:27.429Z" },
 ]
