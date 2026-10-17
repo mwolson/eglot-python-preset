@@ -49,18 +49,21 @@ def main():
         method = message.get("method")
 
         if method == "initialize":
+            init_options = (
+                message.get("params", {}).get("initializationOptions") or {}
+            )
             if program == "ty":
-                config = (
-                    message.get("params", {})
-                    .get("initializationOptions", {})
-                    .get("configuration", {})
-                )
+                config = init_options.get("configuration", {})
                 env = config.get("environment", {})
                 diagnostic_code = (
                     "INIT_OPTIONS_PRESENT"
                     if env.get("python") and env.get("root")
                     else "INIT_OPTIONS_MISSING"
                 )
+            elif "configuration" in init_options:
+                diagnostic_code = "INIT_OPTIONS_LEAKED"
+            if "rass" in init_options:
+                diagnostic_code = "RASS_KEY_LEAKED"
             send(
                 {
                     "jsonrpc": "2.0",

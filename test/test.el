@@ -185,12 +185,14 @@ If TARGET-NAME is non-nil, rename the file."
   my-test-run-live-tests)
 
 (defun my-test--run-rass-session (preset-path file-specs root-dir
-                                              &optional timeout min-events)
+                                              &optional timeout min-events
+                                              extra-args)
   "Run rass-live-client with multiple files and return parsed result.
 PRESET-PATH is the rass preset.  FILE-SPECS is a list of
 \(FILE-PATH . LANGUAGE-ID) cons cells.  ROOT-DIR is the workspace
 root.  TIMEOUT defaults to 8 seconds.  MIN-EVENTS is the minimum
-publishDiagnostics events per file before settle starts (default 1)."
+publishDiagnostics events per file before settle starts (default 1).
+EXTRA-ARGS is an optional string appended to the command."
   (let* ((timeout (or timeout 8))
          (min-events (or min-events 1))
          (file-args (mapconcat
@@ -201,13 +203,14 @@ publishDiagnostics events per file before settle starts (default 1)."
                      file-specs " "))
          (output (shell-command-to-string
                   (format
-                   "python3 %s %s %s --root %s --timeout %s --min-events %s"
+                   "python3 %s %s %s --root %s --timeout %s --min-events %s%s"
                    (shell-quote-argument my-test-live-rass-client)
                    (shell-quote-argument preset-path)
                    file-args
                    (shell-quote-argument root-dir)
                    timeout
-                   min-events))))
+                   min-events
+                   (if extra-args (concat " " extra-args) "")))))
     (json-parse-string output :object-type 'alist)))
 
 (defun my-test--session-file-result (session-result file-path)
@@ -673,8 +676,35 @@ each match at least one actual source."
            preset-path
            (list "\"ruff\""
                  "\"ty\""
-                 "if method == \"initialize\" and TY_CONFIGURATION:"
+                 "if kind == \"ty\" and TY_CONFIGURATION:"
                  "\"python\":\"/tmp/fake-env/\"")))
+      (delete-directory project-dir t))))
+
+(ert-deftest eglot-python-preset-rass-ty-init-config-scoped-to-ty ()
+  (let ((project-dir (make-temp-file "rass-ty-scope" t)))
+    (unwind-protect
+        (let* ((python-file (expand-file-name "script.py" project-dir))
+               (preset-path nil))
+          (my-test-write-script-metadata-file python-file)
+          (cl-letf (((symbol-function 'eglot-python-preset-get-python-path)
+                     (lambda (_file-path) "/tmp/fake-env/bin/python3"))
+                    ((symbol-function 'eglot-python-preset--resolve-executable)
+                     (lambda (name)
+                       (pcase name
+                         ("ruff" "/usr/bin/ruff")
+                         ("ty" "/usr/bin/ty")
+                         (_ name)))))
+            (setq preset-path (my-test-rass-preset-path python-file '(ty ruff))))
+          (let* ((result (my-test-run-rass-template-unit preset-path))
+                 (by-server (alist-get 'initializeOptionsByServer result))
+                 (ty-options (nth 0 by-server)))
+            (should (= (length by-server) 2))
+            (should (equal "/tmp/fake-env/"
+                           (alist-get 'python
+                                      (alist-get 'environment
+                                                 (alist-get 'configuration
+                                                            ty-options)))))
+            (should-not (nth 1 by-server))))
       (delete-directory project-dir t))))
 
 (ert-deftest eglot-python-preset-rass-zuban-tool-generates-server-command ()
@@ -873,6 +903,8 @@ each match at least one actual source."
           (should (equal "ruff" (alist-get 'ruff server-kind nil nil #'equal)))
           (should (equal "ty" (alist-get 'ty server-kind nil nil #'equal)))
           (should-not (alist-get 'unknown server-kind))
+          (should-not (alist-get 'diffChangesFailures result))
+          (should (eq t (alist-get 'diffChangesInstalled result)))
           (should-not (alist-get 'zuban server-kind nil nil #'equal))
           (should (equal t (alist-get 'unchanged non-list-payload)))
           (should (equal t (alist-get 'existing (nth 0 payload))))
@@ -1366,9 +1398,18 @@ the Python project boundary."
                     preset-path
                     `((,unused . "python")
                       (,valid . "python"))
-                    tmp-dir)))
+                    tmp-dir nil nil
+                    (concat "--request textDocument/definition "
+                            (shell-quote-argument
+                             (concat "{\"textDocument\": {\"uri\": \"$URI\"}, "
+                                     "\"position\": {\"line\": 0, "
+                                     "\"character\": 8}}"))))))
       (my-test--assert-file-diagnostics result unused '("F401") '("ruff"))
-      (my-test--assert-file-diagnostics result valid '()))))
+      (my-test--assert-file-diagnostics result valid '())
+      ;; No server here provides definitions.  rass must answer with a
+      ;; JSON-RPC error object, since Eglot rejects a bare string.
+      (let ((response (aref (alist-get 'requests result) 0)))
+        (should (equal (alist-get 'code (alist-get 'error response)) -32601))))))
 
 (ert-deftest eglot-python-preset-rass-live-real-pyrefly-smoke ()
   (skip-unless (my-test-live-tests-enabled-p))
@@ -1718,6 +1759,57 @@ the Python project boundary."
       (my-test--assert-file-diagnostics
        result unresolved '("F401" "unresolved-import") '("ty" "ruff"))
       (my-test--assert-file-diagnostics result valid '()))))
+
+;; When Eglot loses track of edits it resends the whole buffer, and rass
+;; diffs it into ranged changes for incremental servers.  A form feed
+;; before the edit must not shift it to another line.
+(ert-deftest eglot-python-preset-rass-live-real-ruff-full-text-change-after-form-feed ()
+  "Live: a full-text change after a form feed lands on the right line."
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "ruff"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ruff" tmp-dir)
+    (let* ((file (expand-file-name "formfeed.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path file '(ruff)))
+           (changes (json-serialize
+                     [(:text "\"\"\"Page one.\"\"\"\n\f\nimport os\n")]))
+           (result (my-test--run-rass-session
+                    preset-path `((,file . "python")) tmp-dir nil 2
+                    (concat "--settle 3 --did-change "
+                            (shell-quote-argument changes))))
+           (positions (append (alist-get 'diagnosticPositions
+                                         (my-test--session-file-result
+                                          result file))
+                              nil)))
+      (my-test--assert-file-diagnostics result file '("F401") '("ruff"))
+      (should (equal (seq-uniq positions) '(["F401" 2 7]))))))
+
+(ert-deftest eglot-python-preset-rass-live-real-ty-ruff-execute-command ()
+  "Live: a command advertised by Ruff is routed to Ruff, not to ty."
+  (skip-unless (my-test-live-tests-enabled-p))
+  (skip-unless (executable-find "python3"))
+  (skip-unless (executable-find "rass"))
+  (skip-unless (executable-find "ty"))
+  (skip-unless (executable-find "ruff"))
+  (my-test-with-tmp-dir tmp-dir
+    (my-test--setup-fixture-dir "ruff-ty" tmp-dir)
+    (let* ((unsorted (expand-file-name "unsorted-imports.py" tmp-dir))
+           (preset-path (my-test-rass-preset-path unsorted '(ty ruff)))
+           (result (my-test--run-rass-session
+                    preset-path
+                    `((,unsorted . "python"))
+                    tmp-dir nil nil
+                    (concat "--request workspace/executeCommand "
+                            (shell-quote-argument
+                             (concat "{\"command\": \"ruff.applyOrganizeImports\", "
+                                     "\"arguments\": [{\"uri\": \"$URI\", "
+                                     "\"version\": 1}]}"))))))
+      (should (alist-get 'initialized result))
+      (let ((response (aref (alist-get 'requests result) 0)))
+        (should (equal (alist-get 'error response) :null)))
+      (should (>= (alist-get 'applyEditCount result) 1)))))
 
 (defun my-test-run-live-tests-parallel ()
   "Run all live tests in parallel child Emacs processes, then exit.

@@ -65,7 +65,7 @@ for TypeScript, JavaScript, CSS, Astro, Vue, and Svelte support.
   - [Zuban](https://zubanls.com/) - Python language server and type checker with
     Mypy-compatible configuration and Django support. It can be installed
     globally or in a project-root `.venv`.
-  - [rassumfrassum](https://github.com/joaotavora/rassumfrassum) (>= v0.3.3) -
+  - [rassumfrassum](https://github.com/joaotavora/rassumfrassum) (>= v0.3.5) -
     optional stdio multiplexer for combining multiple Python tools.
 
 ## Installation

@@ -15,7 +15,7 @@ dev = [
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "rassumfrassum", specifier = ">=0.3.3,<0.4" }]
+dev = [{ name = "rassumfrassum", specifier = ">=0.3.5,<0.4" }]
 
 [[package]]
 name = "rassumfrassum"
