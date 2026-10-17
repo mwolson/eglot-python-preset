@@ -36,15 +36,23 @@ def _warn_if_rass_too_old() -> None:
         )
 
 
-def _utf16_len(text: str) -> int:
-    return len(text) + sum(1 for char in text if ord(char) > 0xFFFF)
-
-
 def _lsp_position_of(text: str, index: int) -> dict[str, int]:
-    line_start = text.rfind("\n", 0, index) + 1
+    """Convert a Python string index into an LSP position.
+
+    Lines end at LF, CRLF or CR, as the LSP specification defines, and
+    characters count UTF-16 code units.  INDEX must not fall between
+    the CR and LF of a CRLF pair.
+    """
+    line = (
+        text.count("\n", 0, index)
+        + text.count("\r", 0, index)
+        - text.count("\r\n", 0, index)
+    )
+    line_start = max(text.rfind("\n", 0, index), text.rfind("\r", 0, index)) + 1
+    segment = text[line_start:index]
     return {
-        "line": text.count("\n", 0, index),
-        "character": _utf16_len(text[line_start:index]),
+        "line": line,
+        "character": len(segment) + sum(ord(c) > 0xFFFF for c in segment),
     }
 
 
@@ -53,8 +61,8 @@ def _diff_changes(old: str, new: str) -> list[dict[str, Any]]:
 
     Replaces rass 0.3.5's version, which splits lines with
     ``str.splitlines`` (so form feeds and other separators shift the
-    edit to the wrong line) and diffs in roughly quadratic time.  Lines
-    here end only at newlines, as in Eglot and rass's _lsp_position.
+    edit to the wrong line) and diffs in roughly quadratic time.  This
+    matches the fix proposed upstream in joaotavora/rassumfrassum#62.
     """
     if old == new:
         return []
@@ -65,11 +73,29 @@ def _diff_changes(old: str, new: str) -> list[dict[str, Any]]:
     suffix = 0
     while suffix < limit - prefix and old[-1 - suffix] == new[-1 - suffix]:
         suffix += 1
+    # Widen the change so that neither edge splits a CRLF pair of old
+    # (servers can't address a position between CR and LF) or forms one
+    # in new (servers that track line offsets incrementally, such as
+    # those using vscode-languageserver-textdocument, then miscount
+    # lines).
+    if prefix > 0 and "\r\n" in (
+        old[prefix - 1 : prefix + 1],
+        new[prefix - 1 : prefix + 1],
+    ):
+        prefix -= 1
+    end = len(old) - suffix
+    new_end = len(new) - suffix
+    if suffix > 0 and "\r\n" in (
+        old[end - 1 : end + 1],
+        new[new_end - 1 : new_end + 1],
+    ):
+        suffix -= 1
+        end += 1
     return [
         {
             "range": {
                 "start": _lsp_position_of(old, prefix),
-                "end": _lsp_position_of(old, len(old) - suffix),
+                "end": _lsp_position_of(old, end),
             },
             "text": new[prefix : len(new) - suffix],
         }

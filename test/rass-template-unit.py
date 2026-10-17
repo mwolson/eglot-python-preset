@@ -62,10 +62,16 @@ def ensure_rassumfrassum_stubs():
 
 DIFF_CASES = [
     ("one\x0c\ntwo\nthree\n", "one\x0c\ntwo\nTHREE\n"),
-    ("one\rtwo\nthree\n", "one\rtwo\nTHREE\n"),
     ("one\u2028two\nthree\n", "one\u2028two\nTHREE\n"),
     ("one\x85two\nthree\n", "one\x85two\nTHREE\n"),
+    ("one\rtwo\nthree\n", "one\rtwo\nTHREE\n"),
     ("a\r\nb\r\n", "a\r\nB\r\n"),
+    ("a\r\nb\n", "a\nb\n"),
+    ("a\r\nb\n", "a\rb\n"),
+    ("x\r\ny\n", "x\r\r\ny\n"),
+    ("a\nb\n", "a\r\nb\n"),
+    ("a\r", "a\r\nb"),
+    ("cr\rx\nlf", "cr\r\nlf"),
     ("// \U0001F600 x\n", "// \U0001F600! x\n"),
     ("aa", "aaa"),
     ("abc", ""),
@@ -73,25 +79,44 @@ DIFF_CASES = [
     ("same\n", "same\n"),
 ]
 
+EOL = re.compile(r"\r\n|\r|\n")
+
 
 def apply_changes(text, changes):
-    """Apply LSP contentChanges using newline-only lines and UTF-16 columns."""
+    """Apply LSP contentChanges the way the specification describes.
+
+    Lines end at LF, CRLF or CR, columns count UTF-16 code units, and a
+    column past the end of a line clamps to the end of its content.
+    Return None if a change's edges split or form a CRLF pair, which
+    servers built on vscode-languageserver-textdocument mishandle.
+    """
 
     def offset(pos):
-        lines = text.split("\n")
-        index = sum(len(line) + 1 for line in lines[: pos["line"]])
+        starts = [0] + [m.end() for m in EOL.finditer(text)]
+        if pos["line"] >= len(starts):
+            return len(text)
+        index = starts[pos["line"]]
+        eol = EOL.search(text, index)
+        content_end = eol.start() if eol else len(text)
         units = 0
-        for char in lines[pos["line"]] if pos["line"] < len(lines) else "":
-            if units >= pos["character"]:
-                break
-            units += 2 if ord(char) > 0xFFFF else 1
+        while index < content_end and units < pos["character"]:
+            units += 2 if ord(text[index]) > 0xFFFF else 1
             index += 1
         return index
 
     for change in changes:
         start = offset(change["range"]["start"])
         end = offset(change["range"]["end"])
-        text = text[:start] + change["text"] + text[end:]
+        after = text[:start] + change["text"] + text[end:]
+        edges = [
+            (text, start),
+            (text, end),
+            (after, start),
+            (after, start + len(change["text"])),
+        ]
+        if any(i > 0 and t[i - 1 : i + 1] == "\r\n" for t, i in edges):
+            return None
+        text = after
     return text
 
 
