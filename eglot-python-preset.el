@@ -339,6 +339,41 @@ directory so that local .venv resolution still works."
       (executable-find name)
       name))
 
+(defconst eglot-python-preset--min-rass-version "0.3.5"
+  "Oldest rassumfrassum version that generated `rass' presets support.")
+
+(defvar eglot-python-preset--checked-rass-programs
+  (make-hash-table :test 'equal)
+  "Rass programs whose version has already been checked this session.")
+
+(defun eglot-python-preset--rass-version (program)
+  "Return the version that rass PROGRAM reports, or nil if unknown."
+  (with-temp-buffer
+    (when (eq 0 (ignore-errors (call-process program nil t nil "--version")))
+      (goto-char (point-min))
+      (when (re-search-forward "\\brass \\([0-9]+\\(?:\\.[0-9]+\\)*\\)" nil t)
+        (match-string 1)))))
+
+(defun eglot-python-preset--check-rass-version (program)
+  "Warn once per session if rass PROGRAM is too old for generated presets."
+  (unless (gethash program eglot-python-preset--checked-rass-programs)
+    (puthash program t eglot-python-preset--checked-rass-programs)
+    (when-let* ((installed (eglot-python-preset--rass-version program))
+                ((version< installed eglot-python-preset--min-rass-version)))
+      (display-warning
+       'eglot-python-preset
+       (format "rassumfrassum %s at %s is older than %s, so per-server \
+settings will not apply; please upgrade it"
+               installed program eglot-python-preset--min-rass-version)
+       :warning))))
+
+(defun eglot-python-preset--rass-program ()
+  "Return the resolved rass program, warning once if it is too old."
+  (let ((program (eglot-python-preset--resolve-executable
+                  eglot-python-preset-rass-program)))
+    (eglot-python-preset--check-rass-version program)
+    program))
+
 (defun eglot-python-preset--pep-723-context ()
   "Return PEP-723 environment context for the current buffer, or nil."
   (when-let* ((file (buffer-file-name))
@@ -744,8 +779,7 @@ Includes initializationOptions for ty with PEP-723 scripts."
                    ('rass
                     (if eglot-python-preset-rass-command
                         (append eglot-python-preset-rass-command nil)
-                      (list (eglot-python-preset--resolve-executable
-                             eglot-python-preset-rass-program)
+                      (list (eglot-python-preset--rass-program)
                             (eglot-python-preset--rass-preset-path))))
                    ('ty (list (eglot-python-preset--resolve-executable "ty")
                               "server"))

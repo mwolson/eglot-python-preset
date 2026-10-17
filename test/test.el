@@ -771,6 +771,74 @@ each match at least one actual source."
                               (eglot-python-preset--server-contact nil)))))))
       (delete-file python-file))))
 
+(defun my-test-write-fake-rass (path output &optional status)
+  "Create a fake rass at PATH that prints OUTPUT and exits with STATUS."
+  (with-temp-file path
+    (insert "#!/bin/bash\n")
+    (insert (format "printf '%%s\\n' %s\n" (shell-quote-argument output)))
+    (insert (format "exit %d\n" (or status 0))))
+  (set-file-modes path #o755))
+
+(defmacro my-test-capturing-rass-warnings (var &rest body)
+  "Evaluate BODY with fresh rass version state, collecting warnings in VAR."
+  (declare (indent 1))
+  `(let ((,var nil)
+         (eglot-python-preset--checked-rass-programs (make-hash-table :test 'equal)))
+     (cl-letf (((symbol-function 'display-warning)
+                (lambda (type message &rest _)
+                  (push (cons type message) ,var))))
+       ,@body
+       (setq ,var (nreverse ,var)))))
+
+(ert-deftest eglot-python-preset-rass-version-warns-once-when-too-old ()
+  "An old rass produces one warning per program and session."
+  (my-test-with-tmp-dir tmp-dir
+    (let ((rass (expand-file-name "rass" tmp-dir)))
+      (my-test-write-fake-rass rass "rass 0.3.4")
+      (my-test-capturing-rass-warnings warnings
+        (eglot-python-preset--check-rass-version rass)
+        (eglot-python-preset--check-rass-version rass)
+        (should (= 1 (length warnings)))
+        (should (eq 'eglot-python-preset (caar warnings)))
+        (should (string-match-p "rassumfrassum 0\\.3\\.4 at .* older than 0\\.3\\.5"
+                                (cdar warnings)))))))
+
+(ert-deftest eglot-python-preset-rass-version-silent-when-supported-or-unknown ()
+  "No warning for a supported rass or one whose version can't be read."
+  (my-test-with-tmp-dir tmp-dir
+    (let ((cases '(("current" "rass 0.3.5" 0)
+                   ("newer" "rass 0.4.0" 0)
+                   ("garbled" "something else" 0)
+                   ("failing" "rass 0.3.4" 2))))
+      (my-test-capturing-rass-warnings warnings
+        (dolist (case cases)
+          (let ((rass (expand-file-name (car case) tmp-dir)))
+            (my-test-write-fake-rass rass (nth 1 case) (nth 2 case))
+            (eglot-python-preset--check-rass-version rass)))
+        (eglot-python-preset--check-rass-version (expand-file-name "missing" tmp-dir))
+        (should-not warnings)))))
+
+(ert-deftest eglot-python-preset-rass-contact-warns-when-rass-too-old ()
+  "Generated rass contacts check the rass version; exact commands don't."
+  (my-test-with-tmp-dir tmp-dir
+    (let ((python-file (expand-file-name "main.py" tmp-dir))
+          (rass (expand-file-name "old-rass" tmp-dir)))
+      (with-temp-file python-file
+        (insert "print('hello')\n"))
+      (my-test-write-fake-rass rass "rass 0.3.4")
+      (my-test-with-file-buffer
+       python-file
+       (lambda ()
+         (let ((eglot-python-preset-lsp-server 'rass)
+               (eglot-python-preset-rass-program rass))
+           (my-test-capturing-rass-warnings warnings
+             (let ((eglot-python-preset-rass-command ["rass" "python"]))
+               (eglot-python-preset--server-contact nil))
+             (should-not warnings)
+             (should (equal rass
+                            (car (eglot-python-preset--server-contact nil))))
+             (should (= 1 (length warnings))))))))))
+
 (ert-deftest eglot-python-preset-rass-uses-contextual-preset-for-local-venv-tools ()
   (let ((project-dir-1 (make-temp-file "rass-local-a" t))
         (project-dir-2 (make-temp-file "rass-local-b" t)))
